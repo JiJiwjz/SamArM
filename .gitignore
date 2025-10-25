@@ -48,3 +48,7 @@ Thumbs.db
 # 项目特定
 *.pdf
 papers/
+
+# build outputs
+out/
+
