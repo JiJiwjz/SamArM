@@ -55,8 +55,8 @@ async def main():
     
     print(f"✅ 筛选完成: 通过{len(filtered_papers)}, 被过滤{len(rejected)}\n")
     
-    # 只取前5篇进行AI总结测试
-    test_papers = [p.to_dict() for p in filtered_papers[:5]]
+    # 将AI总结数量从5篇改为10篇
+    test_papers = [p.to_dict() for p in filtered_papers[:10]]
     
     # ===== 第4步：AI总结提取 =====
     print("🤖 第4步：AI核心思想提取...")
