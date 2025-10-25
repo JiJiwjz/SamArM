@@ -1,11 +1,12 @@
-# Arxiv-Mailbox
+# Sam_ArMa
 
-一个自动化的 Arxiv 论文日报系统：从爬取 → 去重 → 分类筛选 → AI 总结（DeepSeek） → 邮件格式化与发送 → 定时调度，全流程打通。
+Sam_ArMa (Arxiv-Mailbox) 是一个自动化的 Arxiv 论文日报系统。这个项目旨在每天从 Arxiv 上找出关于特定领域的文章，根据相关性进行排序，并基于 AI 解读。这个项目的流程可以总结为：
+> 爬取 → 去重 → 分类筛选 → AI 总结（DeepSeek） → 邮件格式化与发送 → 定时调度，全流程打通
 
 - 灵活关键词/学科配置（支持 OR/AND/分类等模式）
 - 智能主题分类与相关性打分（保留分数供后续使用）
 - DeepSeek 异步并发总结，失败自动降级为摘要截断
-- 精美 HTML 邮件模板 + 纯文本备选
+- HTML 邮件模板 + 纯文本备选
 - 每日定时推送，支持仅推送“新论文”
 - 结果落盘（HTML 日报 + JSON 报告），可留档回溯
 
@@ -68,15 +69,21 @@ echo '{"records": {}, "updated_at": "", "total_count": 0}' > data/processed_pape
 ### .env（敏感配置）
 
 根据 [.env.example](./.env.example) 创建 `.env`，填写实际密钥。`.env` 已加入 `.gitignore`，请勿提交到 Git。
+在终端输入以下内容：
+```bash
+cd Arxiv-Mailbox
+vim .env
+```
 
+随后，将以下内容放到 `.env` 中即可，记得修改为**你**的信息：
 ```env
 # ============ DeepSeek API ============
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxx
-DEEPSEEK_API_URL=https://api.deepseek.com/v1
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_API_URL=https://api.deepseek.com/v1 # 可以不用改
+DEEPSEEK_MODEL=deepseek-chat                 # 可以不用改，如果需要推理模型，只需改为 deepseek-reasoner
 DEEPSEEK_TIMEOUT=30
 
-# ============ 邮件（推荐 QQ 邮箱） ============
+# ============ 邮件（以 QQ 邮箱为例） ============
 SENDER_EMAIL=your@qq.com
 SENDER_PASSWORD=your_smtp_authcode         # QQ 邮箱需“授权码”
 SMTP_SERVER=smtp.qq.com
@@ -85,7 +92,7 @@ SMTP_USE_SSL=true
 SMTP_USE_TLS=false
 SMTP_TIMEOUT=25
 SMTP_MAX_RETRIES=1                          # 默认仅尝试 1 次，避免“报错但已投递”的重复发送
-# 多收件人用 | 分隔
+# 如果有多个收件人的邮箱，每两个邮箱之间用 | 分隔
 RECIPIENT_EMAILS=foo@bar.com|another@bar.com
 
 # ============ 日志 ============
@@ -99,7 +106,7 @@ LOG_LEVEL=INFO
 ```yaml
 arxiv:
   keywords:
-    - "image denoising"
+    - "image denoising"         # 这些部分可以根据需要灵活更改
     - "image deraining"
     - "reinforcement learning"
     - "embodied AI"
@@ -160,7 +167,7 @@ python main.py run-once --days-back 7 --top-n 12 --no-email --html-out out/daily
 - 每日定时运行（默认 Asia/Shanghai）
   ```bash
   # 需要：pip install apscheduler pytz
-  python main.py schedule --time 08:30 --tz Asia/Shanghai
+  python main.py schedule --time 09:00 --tz Asia/Shanghai
   ```
 
 ---
