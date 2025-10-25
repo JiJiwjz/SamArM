@@ -1,0 +1,24 @@
+# arxiv爬取模块依赖
+arxiv==2.1.0
+requests==2.31.0
+beautifulsoup4==4.12.2
+
+# 数据处理
+pandas==2.1.3
+
+# 文件处理
+python-dotenv==1.0.0
+pyyaml==6.0.1
+
+# 任务调度
+schedule==1.2.0
+APScheduler==3.10.4
+
+# DeepSeek API
+openai==1.3.0
+
+# 日志记录
+python-json-logger==2.0.7
+
+# 工具类
+tqdm==4.66.1

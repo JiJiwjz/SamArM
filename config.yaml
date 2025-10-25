@@ -1,0 +1,126 @@
+# ============ arxiv爬取配置 ============
+arxiv:
+  # 搜索关键词列表
+  keywords:
+    - "image denoising"
+    - "image deraining"
+    - "reinforcement learning"
+    - "embodied AI"
+  
+  # 搜索分类
+  categories:
+    - "cs.CV"        # Computer Vision
+    - "cs.AI"        # Artificial Intelligence
+    - "cs.LG"        # Machine Learning
+  
+  # 搜索参数
+  max_results: 50
+  sort_by: "submittedDate"  # submittedDate|relevance|lastUpdatedDate
+  sort_order: "descending"
+
+# ============ 深度学习API配置 ============
+deepseek:
+  api_key: "${DEEPSEEK_API_KEY}"
+  api_url: "https://api.deepseek.com/v1"
+  model: "deepseek-chat"
+  timeout: 30
+  
+  # 提示词配置
+  system_prompt: |
+    你是一个学术论文总结专家。请用中文总结以下论文的核心思想，
+    包括：1) 研究问题 2) 方法创新 3) 主要贡献 4) 实验结果。
+    控制在200-300字以内。
+  
+  # 模型参数
+  temperature: 0.7
+  top_p: 0.9
+  max_tokens: 500
+
+# ============ 邮件配置 ============
+email:
+  # 发送者信息
+  sender_email: "${SENDER_EMAIL}"
+  sender_password: "${SENDER_PASSWORD}"
+  
+  # SMTP配置
+  smtp_server: "${SMTP_SERVER}"
+  smtp_port: ${SMTP_PORT}
+  use_tls: true
+  
+  # 收件人列表
+  recipients: "${RECIPIENT_EMAILS}"
+  
+  # 邮件设置
+  subject_prefix: "【arxiv论文日报】"
+  send_html: true
+  include_links: true
+
+# ============ 定时任务配置 ============
+scheduler:
+  # 执行时间（HH:MM格式）
+  execute_time: "09:00"
+  
+  # 执行频率：daily|weekly|monthly
+  frequency: "daily"
+  
+  # 星期几执行（weekly时有效）：0-6表示周一到周日
+  day_of_week: 0
+  
+  # 是否启用调度
+  enabled: true
+  
+  # 任务超时时间（秒）
+  timeout: 300
+
+# ============ 日志配置 ============
+logging:
+  level: "INFO"  # DEBUG|INFO|WARNING|ERROR|CRITICAL
+  file: "logs/arxiv_mailbot.log"
+  max_size_mb: 10
+  backup_count: 5
+  
+  # 日志格式
+  format: "[%(asctime)s] %(levelname)s - %(name)s - %(message)s"
+
+# ============ 数据存储配置 ============
+storage:
+  # 数据目录
+  data_dir: "data"
+  
+  # 是否保存论文PDF
+  save_pdf: false
+  
+  # 数据格式：json|csv
+  format: "json"
+  
+  # 是否保存中间结果
+  save_intermediate: true
+
+# ============ 爬虫配置 ============
+crawler:
+  # 请求超时时间（秒）
+  timeout: 30
+  
+  # 重试次数
+  max_retries: 3
+  
+  # 重试延迟（秒）
+  retry_delay: 5
+  
+  # 请求头User-Agent
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+  
+  # 使用代理
+  use_proxy: false
+  proxy_url: "${HTTP_PROXY}"
+
+# ============ 过滤配置 ============
+filter:
+  # 论文最小相关性分数（0-1）
+  min_relevance_score: 0.5
+  
+  # 是否去重
+  deduplicate: true
+  
+  # 是否过滤已处理论文
+  skip_processed: true
