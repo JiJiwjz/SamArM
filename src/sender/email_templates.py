@@ -184,6 +184,40 @@ class EmailTemplate:
             margin: 5px 5px 5px 0;
         }}
         
+        .quality-badge {{
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin: 5px 5px 5px 0;
+        }}
+        
+        .quality-top {{
+            background-color: #fff3e0;
+            color: #e65100;
+        }}
+        
+        .quality-excellent {{
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }}
+        
+        .quality-good {{
+            background-color: #e3f2fd;
+            color: #1565c0;
+        }}
+        
+        .quality-normal {{
+            background-color: #f3e5f5;
+            color: #6a1b9a;
+        }}
+        
+        .quality-weak {{
+            background-color: #fafafa;
+            color: #757575;
+        }}
+        
         .paper-summary {{
             background-color: #ffffff;
             border-left: 3px solid #667eea;
@@ -192,6 +226,17 @@ class EmailTemplate:
             font-size: 13px;
             line-height: 1.7;
             color: #555;
+        }}
+        
+        .quality-reasoning {{
+            background-color: #fffef7;
+            border-left: 3px solid #ffa726;
+            padding: 10px 15px;
+            margin: 12px 0;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #666;
+            font-style: italic;
         }}
         
         .paper-keywords {{
@@ -300,7 +345,7 @@ class EmailTemplate:
         
         Args:
             index: 论文序号
-            paper: 论文信息字典（包含AI总结）
+            paper: 论文信息字典（包含AI总结和评估）
         
         Returns:
             HTML卡片
@@ -315,6 +360,11 @@ class EmailTemplate:
         arxiv_url = paper.get('arxiv_url', '#')
         paper_id = paper.get('paper_id', '')
         matched_keywords = paper.get('matched_keywords', [])
+        
+        # 🆕 提取论文质量评估信息
+        quality_score = paper.get('quality_score')
+        quality_level = paper.get('quality_level')
+        quality_reasoning = paper.get('quality_reasoning')
         
         # 格式化作者
         authors_str = ', '.join(authors[:3])
@@ -337,6 +387,40 @@ class EmailTemplate:
         }
         topic_label = topic_labels.get(topic, f'📌 {topic}')
         
+        # 🆕 生成质量评估徽章
+        quality_badge_html = ""
+        if quality_score is not None and quality_level:
+            # 根据评分生成星级
+            stars = "⭐" * min(quality_score, 10)
+            
+            # 根据评分确定样式
+            if quality_score >= 9:
+                badge_class = "quality-top"
+                emoji = "🏆"
+            elif quality_score >= 7:
+                badge_class = "quality-excellent"
+                emoji = "⭐"
+            elif quality_score >= 5:
+                badge_class = "quality-good"
+                emoji = "✅"
+            elif quality_score >= 3:
+                badge_class = "quality-normal"
+                emoji = "📝"
+            else:
+                badge_class = "quality-weak"
+                emoji = "📄"
+            
+            quality_badge_html = f'<span class="quality-badge {badge_class}">{emoji} {quality_level} ({quality_score}/10)</span>'
+        
+        # 🆕 生成评估理由区块
+        reasoning_html = ""
+        if quality_reasoning:
+            reasoning_html = f"""
+                <div class="quality-reasoning">
+                    <strong>💡 AI评估理由：</strong>{quality_reasoning}
+                </div>
+            """
+        
         return f"""
             <div class="paper-card">
                 <div>
@@ -358,12 +442,15 @@ class EmailTemplate:
                 <div style="margin: 10px 0;">
                     <span class="paper-topic">{topic_label}</span>
                     <span class="paper-score">相关性: {relevance_score:.1%}</span>
+                    {quality_badge_html}
                 </div>
                 
                 <div class="paper-summary">
                     <strong>🤖 AI核心思想总结：</strong><br>
                     {ai_summary}
                 </div>
+                
+                {reasoning_html}
                 
                 <div class="paper-keywords">
                     <strong>🏷️ 关键词：</strong>{keywords_str}
@@ -390,8 +477,8 @@ class EmailTemplate:
             <div class="divider"></div>
             <p>
                 这是一份自动生成的Arxiv论文日报。<br>
-                由 <strong>Arxiv Mailbot</strong> 驱动，使用DeepSeek AI生成论文总结。<br>
-                <a href="https://github.com/JiJiwjz/Arxiv-Mailbox">项目源码</a> | 
+                由 <strong>Arxiv Mailbot</strong> 驱动，使用DeepSeek AI生成论文总结与评估。<br>
+                <a href="https://github.com/JiJiwjz/SamArM">项目源码</a> | 
                 <a href="mailto:support@example.com">反馈建议</a>
             </p>
             <p style="margin-top: 10px; color: #ccc;">

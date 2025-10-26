@@ -6,7 +6,7 @@ DeepSeek API 客户端
 import asyncio
 import aiohttp
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
 import json
 
@@ -109,231 +109,173 @@ class DeepSeekClient:
 控制在200-300字以内，语言简洁学术。"""
         
         messages = [
-            {
-                "role": "system",
-                "content": system_prompt
-            },
-            {
-                "role": "user",
-                "content": f"论文标题：{title}\n\n论文摘要：{summary}"
-            }
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"标题：{title}\n\n摘要：{summary}"}
         ]
         
-        logger.debug(f"开始总结论文: {title[:50]}...")
-        result = await self._call_api(messages, temperature=0.7, max_tokens=500)
-        
-        if result:
-            logger.debug(f"论文总结完成: {title[:50]}...")
-        else:
-            logger.warning(f"论文总结失败: {title[:50]}...")
-        
-        return result
+        return await self._call_api(messages, temperature=0.5, max_tokens=500)
     
-    async def extract_key_points(self, title: str, summary: str) -> Optional[str]:
+    async def evaluate_paper_quality(self, title: str, summary: str, 
+                                     authors: list = None) -> Optional[Dict[str, Any]]:
         """
-        提取论文的关键要点
+        🆕 评估论文水平
         
         Args:
             title: 论文标题
             summary: 论文摘要
+            authors: 作者列表（可选）
         
         Returns:
-            关键要点或None
+            评估结果字典，包含：
+            - quality_score: 质量评分 (1-10)
+            - quality_level: 水平等级 (顶级/优秀/良好/一般/较弱)
+            - reasoning: 评估理由
         """
-        system_prompt = """你是一个学术论文分析专家。请提取以下论文的关键要点，
-按以下格式用中文输出（每点一句话，共3-5点）：
-1. 研究问题：...
-2. 核心方法：...
-3. 创新之处：...
-4. 主要成果：...
-5. 应用前景：..."""
+        authors_info = f"作者：{', '.join(authors[:3])}" if authors else ""
+        
+        system_prompt = """你是一个资深的学术论文评审专家。请根据论文的标题和摘要，评估其学术水平。
+
+评估维度：
+1. 创新性：研究问题和方法是否有创新
+2. 技术深度：方法是否有技术难度和深度
+3. 实用价值：研究成果的应用价值
+4. 实验完整性：实验设计是否完整充分
+
+请以JSON格式返回评估结果：
+{
+  "quality_score": 8,
+  "quality_level": "优秀",
+  "reasoning": "简要说明评分理由（50字以内）"
+}
+
+评分标准：
+- 9-10分：顶级（顶会/顶刊水平，创新性强，影响力大）
+- 7-8分：优秀（方法新颖，实验充分，有较好贡献）
+- 5-6分：良好（有一定创新，实验合理）
+- 3-4分：一般（创新有限，实验基础）
+- 1-2分：较弱（缺乏创新或实验不足）"""
+        
+        user_content = f"""请评估以下论文：
+
+标题：{title}
+
+{authors_info}
+
+摘要：{summary}"""
         
         messages = [
-            {
-                "role": "system",
-                "content": system_prompt
-            },
-            {
-                "role": "user",
-                "content": f"论文标题：{title}\n\n论文摘要：{summary}"
-            }
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
         ]
         
-        logger.debug(f"开始提取关键要点: {title[:50]}...")
-        result = await self._call_api(messages, temperature=0.5, max_tokens=400)
+        response = await self._call_api(messages, temperature=0.3, max_tokens=300)
         
-        return result
+        if not response:
+            return None
+        
+        try:
+            # 提取JSON内容
+            import re
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                result = json.loads(json_match.group())
+                
+                # 验证字段
+                if 'quality_score' in result and 'quality_level' in result:
+                    # 确保评分在1-10范围内
+                    result['quality_score'] = max(1, min(10, int(result['quality_score'])))
+                    return result
+            
+            logger.warning(f"无法解析论文评估结果: {response}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"解析论文评估JSON失败: {e}")
+            return None
 
 
 class DeepSeekBatchProcessor:
-    """DeepSeek批量异步处理器"""
+    """DeepSeek批处理器"""
     
-    def __init__(self, client: DeepSeekClient, batch_size: int = 5, 
-                 max_retries: int = 3, retry_delay: float = 2.0):
+    def __init__(self, client: DeepSeekClient, batch_size: int = 3, delay: float = 0.5):
         """
         初始化批处理器
         
         Args:
             client: DeepSeek客户端
             batch_size: 批处理大小
-            max_retries: 最大重试次数
-            retry_delay: 重试延迟（秒）
+            delay: 批次间延迟（秒）
         """
         self.client = client
         self.batch_size = batch_size
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
-        
-        logger.info(f"批处理器已初始化: 批大小={batch_size}, 最大重试={max_retries}")
+        self.delay = delay
     
-    async def _process_single_paper(self, paper: Dict[str, Any], 
-                                   retry_count: int = 0) -> Dict[str, Any]:
+    async def process_papers_with_evaluation(self, papers: list, 
+                                            system_prompt: Optional[str] = None) -> Tuple[list, list]:
         """
-        处理单篇论文（支持重试）
-        
-        Args:
-            paper: 论文信息
-            retry_count: 当前重试次数
-        
-        Returns:
-            处理后的论文信息
-        """
-        try:
-            # 尝试调用API总结论文
-            summary_result = await self.client.summarize_paper(
-                paper['title'],
-                paper['summary']
-            )
-            
-            if summary_result:
-                paper['ai_summary'] = summary_result
-                paper['summary_status'] = 'success'
-                paper['summary_time'] = datetime.utcnow().isoformat()
-                logger.info(f"✅ 总结成功: {paper['paper_id']}")
-            else:
-                # API调用失败，使用备选方案
-                if retry_count < self.max_retries:
-                    logger.warning(f"⚠️ 第{retry_count+1}次重试: {paper['paper_id']}")
-                    await asyncio.sleep(self.retry_delay)
-                    return await self._process_single_paper(paper, retry_count + 1)
-                else:
-                    # 使用论文摘要的自动缩写作为备选
-                    paper['ai_summary'] = self._fallback_summary(paper['summary'])
-                    paper['summary_status'] = 'fallback'
-                    paper['summary_time'] = datetime.utcnow().isoformat()
-                    logger.warning(f"⚠️ 使用备选方案: {paper['paper_id']}")
-        
-        except Exception as e:
-            logger.error(f"❌ 处理失败: {paper['paper_id']}: {e}")
-            paper['summary_status'] = 'error'
-            paper['summary_error'] = str(e)
-            paper['summary_time'] = datetime.utcnow().isoformat()
-        
-        return paper
-    
-    @staticmethod
-    def _fallback_summary(summary: str, max_length: int = 300) -> str:
-        """
-        生成论文摘要的自动缩写（备选方案）
-        
-        Args:
-            summary: 论文摘要
-            max_length: 最大长度
-        
-        Returns:
-            缩写后的摘要
-        """
-        # 简单的摘要缩写：取前几个句子
-        sentences = summary.split('。')
-        result = ''
-        
-        for sentence in sentences:
-            if len(result) >= max_length:
-                break
-            result += sentence + '。' if sentence.strip() else ''
-        
-        if len(result) > max_length:
-            result = result[:max_length] + '...'
-        
-        return result.strip()
-    
-    async def process_papers(self, papers: list) -> tuple:
-        """
-        异步批量处理论文
+        🆕 批量处理论文（包含总结和评估）
         
         Args:
             papers: 论文列表
+            system_prompt: 系统提示词
         
         Returns:
-            (处理成功的论文, 处理失败的论文, 统计信息)
+            (总结结果列表, 评估结果列表)
         """
-        logger.info(f"开始处理 {len(papers)} 篇论文（批大小: {self.batch_size}）...")
+        summaries = []
+        evaluations = []
+        total = len(papers)
         
-        processed_papers = []
-        failed_papers = []
-        
-        # 分批处理
-        for i in range(0, len(papers), self.batch_size):
+        for i in range(0, total, self.batch_size):
             batch = papers[i:i + self.batch_size]
-            logger.info(f"处理第 {i//self.batch_size + 1} 批 ({len(batch)} 篇)")
+            batch_num = i // self.batch_size + 1
+            total_batches = (total + self.batch_size - 1) // self.batch_size
             
-            # 并发处理当前批次
-            tasks = [self._process_single_paper(paper) for paper in batch]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            logger.info(f"正在处理第 {batch_num}/{total_batches} 批...")
             
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.error(f"批处理中出现异常: {result}")
-                elif result.get('summary_status') == 'error':
-                    failed_papers.append(result)
+            # 并发执行总结和评估
+            tasks = []
+            for paper in batch:
+                # 总结任务
+                summary_task = self.client.summarize_paper(
+                    paper.get('title', ''),
+                    paper.get('summary', ''),
+                    system_prompt
+                )
+                # 评估任务
+                eval_task = self.client.evaluate_paper_quality(
+                    paper.get('title', ''),
+                    paper.get('summary', ''),
+                    paper.get('authors', [])
+                )
+                tasks.append((summary_task, eval_task, paper))
+            
+            # 等待所有任务完成
+            batch_results = await asyncio.gather(
+                *[asyncio.gather(s, e) for s, e, p in tasks],
+                return_exceptions=True
+            )
+            
+            # 处理结果
+            for (summary_result, eval_result), (_, _, paper) in zip(batch_results, tasks):
+                paper_id = paper.get('paper_id', 'unknown')
+                
+                # 处理总结结果
+                if isinstance(summary_result, Exception):
+                    logger.error(f"总结失败 {paper_id}: {summary_result}")
+                    summaries.append((paper, None))
                 else:
-                    processed_papers.append(result)
+                    summaries.append((paper, summary_result))
+                
+                # 处理评估结果
+                if isinstance(eval_result, Exception):
+                    logger.error(f"评估失败 {paper_id}: {eval_result}")
+                    evaluations.append((paper, None))
+                else:
+                    evaluations.append((paper, eval_result))
+            
+            # 批次间延迟
+            if i + self.batch_size < total:
+                await asyncio.sleep(self.delay)
         
-        # 统计信息
-        stats = {
-            'total': len(papers),
-            'success': sum(1 for p in processed_papers if p.get('summary_status') == 'success'),
-            'fallback': sum(1 for p in processed_papers if p.get('summary_status') == 'fallback'),
-            'error': len(failed_papers)
-        }
-        
-        logger.info(f"处理完成: 成功{stats['success']}, 备选{stats['fallback']}, 失败{stats['error']}")
-        
-        return processed_papers, failed_papers, stats
-
-
-async def test_deepseek_client():
-    """测试DeepSeek客户端"""
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    
-    from src.config import ConfigManager
-    
-    config = ConfigManager()
-    deepseek_config = config.get_deepseek_config()
-    
-    # 创建客户端
-    client = DeepSeekClient(
-        api_key=deepseek_config.get('api_key'),
-        api_url=deepseek_config.get('api_url'),
-        model=deepseek_config.get('model'),
-        timeout=deepseek_config.get('timeout', 30)
-    )
-    
-    # 测试总结
-    test_title = "深度学习在计算机视觉中的应用"
-    test_summary = "深度学习在计算机视觉领域取得了显著进展。本文综述了卷积神经网络在图像分类、目标检测和语义分割等任务中的应用。通过大规模数据集的训练和优化，深度学习模型在多个基准数据集上取得了最先进的性能。"
-    
-    print("🧪 测试DeepSeek API...")
-    result = await client.summarize_paper(test_title, test_summary)
-    
-    if result:
-        print("✅ 测试成功！")
-        print(f"总结结果:\n{result}")
-    else:
-        print("❌ 测试失败！请检查API密钥和网络连接")
-
-
-if __name__ == '__main__':
-    asyncio.run(test_deepseek_client())
+        return summaries, evaluations
