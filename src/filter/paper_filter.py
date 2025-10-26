@@ -42,6 +42,7 @@ class PaperClassifier:
     
     # 主题分类配置
     TOPIC_KEYWORDS = {
+        # ========== 图像处理相关 ==========
         'image_denoising': {
             'keywords': ['denoise', 'denoising', 'noise removal', 'image quality', 'restoration'],
             'weight': 1.0,
@@ -52,25 +53,109 @@ class PaperClassifier:
             'weight': 1.0,
             'description': '图像去雨'
         },
+        
+        # ========== 生成模型相关 ==========
+        'image_generation': {
+            'keywords': ['image generation', 'image synthesis', 'generative model', 'GAN', 'VAE', 
+                        'generate image', 'image creation', 'text-to-image', 'T2I'],
+            'weight': 1.0,
+            'description': '图像生成'
+        },
+        'diffusion_models': {
+            'keywords': ['diffusion', 'DDPM', 'DDIM', 'latent diffusion', 'stable diffusion', 
+                        'score-based', 'denoising diffusion', 'diffusion model', 'EDM'],
+            'weight': 1.0,
+            'description': '扩散模型'
+        },
+        
+        # ========== 大模型相关 ==========
+        'large_language_models': {
+            'keywords': ['large language model', 'LLM', 'GPT', 'BERT', 'transformer language', 
+                        'language model', 'pre-trained language', 'instruction tuning', 'RLHF',
+                        'chain of thought', 'in-context learning', 'few-shot learning'],
+            'weight': 1.0,
+            'description': '大语言模型'
+        },
+        'multimodal_large_models': {
+            'keywords': ['multimodal large model', 'vision-language model', 'VLM', 'CLIP', 
+                        'multimodal learning', 'vision language', 'image-text', 'MLLM',
+                        'multimodal LLM', 'visual language model'],
+            'weight': 1.0,
+            'description': '多模态大模型/MLLM'
+        },
+        
+        # ========== 模型架构相关 ==========
+        'model_architecture': {
+            'keywords': ['architecture', 'network design', 'model structure', 'neural architecture',
+                        'attention mechanism', 'self-attention', 'cross-attention', 'MLP',
+                        'residual connection', 'skip connection', 'layer norm', 'batch norm'],
+            'weight': 0.8,
+            'description': '模型架构'
+        },
+        'transformer_architecture': {
+            'keywords': ['transformer', 'attention', 'self-attention', 'multi-head attention',
+                        'ViT', 'vision transformer', 'Swin', 'BERT', 'GPT architecture'],
+            'weight': 0.9,
+            'description': 'Transformer架构'
+        },
+        
+        # ========== AI智能体相关 ==========
         'reinforcement_learning': {
-            'keywords': ['reinforcement learning', 'RL', 'Q-learning', 'policy gradient', 'reward', 'agent', 'environment'],
+            'keywords': ['reinforcement learning', 'RL', 'Q-learning', 'policy gradient', 
+                        'reward', 'agent', 'environment', 'PPO', 'DQN', 'A3C', 'SAC',
+                        'model-based RL', 'model-free RL', 'off-policy', 'on-policy'],
             'weight': 1.0,
             'description': '强化学习'
         },
         'embodied_ai': {
-            'keywords': ['embodied', 'embodied AI', 'robot', 'navigation', 'vision-language-action', 'VLA', 'embodied agent'],
+            'keywords': ['embodied', 'embodied AI', 'robot', 'robotics', 'navigation', 
+                        'vision-language-action', 'VLA', 'embodied agent', 'manipulation',
+                        'locomotion', 'sim-to-real', 'robot learning'],
             'weight': 1.0,
             'description': '具身智能'
         },
+        'world_models': {
+            'keywords': ['world model', 'world modeling', 'predictive model', 'dynamics model',
+                        'environment model', 'model-based learning', 'imagination', 'planning',
+                        'forward model', 'transition model', 'video prediction'],
+            'weight': 1.0,
+            'description': '世界模型'
+        },
+        
+        # ========== 计算机视觉基础任务 ==========
         'computer_vision': {
-            'keywords': ['vision', 'image', 'visual', 'video', 'detection', 'segmentation', 'recognition'],
+            'keywords': ['vision', 'image', 'visual', 'video', 'detection', 'segmentation', 
+                        'recognition', 'classification', 'object detection', 'semantic segmentation',
+                        'instance segmentation', 'tracking', 'pose estimation'],
             'weight': 0.5,
             'description': '计算机视觉'
         },
+        
+        # ========== 深度学习基础 ==========
         'deep_learning': {
-            'keywords': ['deep learning', 'neural network', 'CNN', 'transformer', 'model', 'network'],
+            'keywords': ['deep learning', 'neural network', 'CNN', 'convolutional', 
+                        'model', 'network', 'training', 'optimization', 'gradient descent',
+                        'backpropagation', 'loss function'],
             'weight': 0.3,
             'description': '深度学习'
+        },
+        
+        # ========== 3D视觉与生成 ==========
+        '3d_vision': {
+            'keywords': ['3D', 'point cloud', 'mesh', 'NeRF', 'neural radiance field',
+                        '3D reconstruction', 'depth estimation', 'stereo', 'SfM', 'SLAM',
+                        '3D generation', 'gaussian splatting', '3DGS'],
+            'weight': 0.9,
+            'description': '3D视觉与生成'
+        },
+        
+        # ========== 视频理解与生成 ==========
+        'video_understanding': {
+            'keywords': ['video', 'temporal', 'action recognition', 'video classification',
+                        'video understanding', 'temporal modeling', 'optical flow',
+                        'video generation', 'video synthesis', 'motion'],
+            'weight': 0.8,
+            'description': '视频理解与生成'
         }
     }
     

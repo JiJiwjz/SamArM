@@ -345,7 +345,7 @@ class EmailTemplate:
         
         Args:
             index: 论文序号
-            paper: 论文信息字典（包含AI总结和评估）
+            paper: 论文信息字典（包含AI总结和质量评估）
         
         Returns:
             HTML卡片
@@ -361,10 +361,17 @@ class EmailTemplate:
         paper_id = paper.get('paper_id', '')
         matched_keywords = paper.get('matched_keywords', [])
         
-        # 🆕 提取论文质量评估信息
+        # 🆕 提取五维度评分
         quality_score = paper.get('quality_score')
         quality_level = paper.get('quality_level')
         quality_reasoning = paper.get('quality_reasoning')
+        innovation = paper.get('innovation_score')
+        practicality = paper.get('practicality_score')
+        technical_depth = paper.get('technical_depth_score')
+        experimental_rigor = paper.get('experimental_rigor_score')
+        impact_potential = paper.get('impact_potential_score')
+        strengths = paper.get('strengths', [])
+        weaknesses = paper.get('weaknesses', [])
         
         # 格式化作者
         authors_str = ', '.join(authors[:3])
@@ -376,12 +383,21 @@ class EmailTemplate:
         if len(matched_keywords) > 5:
             keywords_str += f' 等'
         
-        # 主题标签配置
+        # 主题标签配置（扩展新增主题）
         topic_labels = {
             'image_denoising': '🖼️ 图像去噪',
             'image_deraining': '🌧️ 图像去雨',
+            'image_generation': '🎨 图像生成',
+            'diffusion_models': '🌊 扩散模型',
+            'large_language_models': '🗣️ 大语言模型',
+            'multimodal_large_models': '🎭 多模态大模型',
+            'model_architecture': '🏗️ 模型架构',
+            'transformer_architecture': '🔶 Transformer',
             'reinforcement_learning': '🤖 强化学习',
             'embodied_ai': '🦾 具身智能',
+            'world_models': '🌍 世界模型',
+            '3d_vision': '📐 3D视觉',
+            'video_understanding': '🎬 视频理解',
             'computer_vision': '👁️ 计算机视觉',
             'deep_learning': '🧠 深度学习'
         }
@@ -390,9 +406,6 @@ class EmailTemplate:
         # 🆕 生成质量评估徽章
         quality_badge_html = ""
         if quality_score is not None and quality_level:
-            # 根据评分生成星级
-            stars = "⭐" * min(quality_score, 10)
-            
             # 根据评分确定样式
             if quality_score >= 9:
                 badge_class = "quality-top"
@@ -410,7 +423,43 @@ class EmailTemplate:
                 badge_class = "quality-weak"
                 emoji = "📄"
             
-            quality_badge_html = f'<span class="quality-badge {badge_class}">{emoji} {quality_level} ({quality_score}/10)</span>'
+            quality_badge_html = f'<span class="quality-badge {badge_class}">{emoji} {quality_level} ({quality_score:.1f}/10)</span>'
+        
+        # 🆕 生成五维度雷达图（文本版）
+        dimensions_html = ""
+        if all([innovation, practicality, technical_depth, experimental_rigor, impact_potential]):
+            dimensions_html = f"""
+                <div style="background-color: #f8f9fa; border-radius: 6px; padding: 12px; margin: 12px 0;">
+                    <strong style="color: #495057;">📊 五维度评分：</strong>
+                    <div style="margin-top: 8px; font-size: 12px;">
+                        <div style="margin-bottom: 4px;">
+                            <span style="display: inline-block; width: 100px; color: #666;">💡 创新性：</span>
+                            <span style="color: #667eea; font-weight: 600;">{innovation:.1f}/10</span>
+                            <span style="color: #999; margin-left: 5px;">{'█' * int(innovation)}</span>
+                        </div>
+                        <div style="margin-bottom: 4px;">
+                            <span style="display: inline-block; width: 100px; color: #666;">🎯 实用性：</span>
+                            <span style="color: #667eea; font-weight: 600;">{practicality:.1f}/10</span>
+                            <span style="color: #999; margin-left: 5px;">{'█' * int(practicality)}</span>
+                        </div>
+                        <div style="margin-bottom: 4px;">
+                            <span style="display: inline-block; width: 100px; color: #666;">🔬 技术深度：</span>
+                            <span style="color: #667eea; font-weight: 600;">{technical_depth:.1f}/10</span>
+                            <span style="color: #999; margin-left: 5px;">{'█' * int(technical_depth)}</span>
+                        </div>
+                        <div style="margin-bottom: 4px;">
+                            <span style="display: inline-block; width: 100px; color: #666;">🧪 实验完整性：</span>
+                            <span style="color: #667eea; font-weight: 600;">{experimental_rigor:.1f}/10</span>
+                            <span style="color: #999; margin-left: 5px;">{'█' * int(experimental_rigor)}</span>
+                        </div>
+                        <div>
+                            <span style="display: inline-block; width: 100px; color: #666;">🚀 影响力潜力：</span>
+                            <span style="color: #667eea; font-weight: 600;">{impact_potential:.1f}/10</span>
+                            <span style="color: #999; margin-left: 5px;">{'█' * int(impact_potential)}</span>
+                        </div>
+                    </div>
+                </div>
+            """
         
         # 🆕 生成评估理由区块
         reasoning_html = ""
@@ -418,6 +467,36 @@ class EmailTemplate:
             reasoning_html = f"""
                 <div class="quality-reasoning">
                     <strong>💡 AI评估理由：</strong>{quality_reasoning}
+                </div>
+            """
+        
+        # 🆕 优点和不足
+        pros_cons_html = ""
+        if strengths or weaknesses:
+            pros_html = ""
+            if strengths:
+                pros_items = "".join([f"<li>{s}</li>" for s in strengths[:3]])
+                pros_html = f"""
+                    <div style="margin-bottom: 8px;">
+                        <strong style="color: #2e7d32;">✅ 优点：</strong>
+                        <ul style="margin: 4px 0; padding-left: 20px; font-size: 12px;">{pros_items}</ul>
+                    </div>
+                """
+            
+            cons_html = ""
+            if weaknesses:
+                cons_items = "".join([f"<li>{w}</li>" for w in weaknesses[:3]])
+                cons_html = f"""
+                    <div>
+                        <strong style="color: #c62828;">⚠️ 不足：</strong>
+                        <ul style="margin: 4px 0; padding-left: 20px; font-size: 12px;">{cons_items}</ul>
+                    </div>
+                """
+            
+            pros_cons_html = f"""
+                <div style="background-color: #fafafa; border-radius: 6px; padding: 10px; margin: 12px 0; font-size: 12px;">
+                    {pros_html}
+                    {cons_html}
                 </div>
             """
         
@@ -445,12 +524,15 @@ class EmailTemplate:
                     {quality_badge_html}
                 </div>
                 
+                {dimensions_html}
+                
                 <div class="paper-summary">
                     <strong>🤖 AI核心思想总结：</strong><br>
                     {ai_summary}
                 </div>
                 
                 {reasoning_html}
+                {pros_cons_html}
                 
                 <div class="paper-keywords">
                     <strong>🏷️ 关键词：</strong>{keywords_str}

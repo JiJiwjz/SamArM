@@ -1,6 +1,6 @@
 """
 DailyJob - 论文日报编排任务
-串联：爬取 -> 去重 -> 筛选 -> AI总结 -> 邮件格式化 -> 邮件发送 -> 落盘
+串联：爬取 -> 去重 -> 筛选 -> AI总结 -> 质量评估 -> 邮件格式化 -> 邮件发送 -> 落盘
 """
 
 import os
@@ -13,6 +13,7 @@ from src.config import ConfigManager
 from src.crawler import ArxivCrawler
 from src.filter import PaperFilter, Deduplicator
 from src.extractor import IdeaExtractor, ExtractedIdea
+from src.evaluator import PaperEvaluator  # 🆕 导入质量评估器
 from src.sender import EmailFormatter, EmailSender
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,30 @@ class DailyJob:
             pid = idea.get("paper_id")
             base = meta_map.get(pid, {})
             merged.append({**base, **idea})
+        return merged
+    
+    def _merge_quality(self, papers: List[Dict[str, Any]], qualities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """🆕 将质量评估结果合并到论文数据中"""
+        quality_map = {q.get("paper_id"): q for q in qualities}
+        merged = []
+        for paper in papers:
+            pid = paper.get("paper_id")
+            quality_data = quality_map.get(pid, {})
+            # 提取关键评估字段
+            paper_with_quality = {
+                **paper,
+                'quality_score': quality_data.get('overall_score'),
+                'quality_level': quality_data.get('quality_level'),
+                'quality_reasoning': quality_data.get('reasoning'),
+                'innovation_score': quality_data.get('innovation_score'),
+                'practicality_score': quality_data.get('practicality_score'),
+                'technical_depth_score': quality_data.get('technical_depth_score'),
+                'experimental_rigor_score': quality_data.get('experimental_rigor_score'),
+                'impact_potential_score': quality_data.get('impact_potential_score'),
+                'strengths': quality_data.get('strengths', []),
+                'weaknesses': quality_data.get('weaknesses', [])
+            }
+            merged.append(paper_with_quality)
         return merged
 
     async def _extract_async(self, filtered_dict: List[Dict[str, Any]], batch_size: int) -> List[Dict[str, Any]]:
@@ -63,6 +88,18 @@ class DailyJob:
                     arxiv_url=p.get('arxiv_url', '')
                 ))
         return [i.to_dict() for i in ideas]
+    
+    async def _evaluate_async(self, papers: List[Dict[str, Any]], batch_size: int) -> List[Dict[str, Any]]:
+        """🆕 内部异步质量评估流程"""
+        deepseek_config = self.cm.get_deepseek_config()
+        try:
+            evaluator = PaperEvaluator(deepseek_config)
+            qualities, stats = await evaluator.evaluate_batch_papers(papers, batch_size=batch_size)
+            logger.info(f"质量评估完成: 成功{stats['success']} 备选{stats['fallback']} 失败{stats['error']} 耗时{stats['processing_time']:.2f}s")
+            return [q.to_dict() for q in qualities]
+        except Exception as e:
+            logger.warning(f"质量评估不可用: {e}")
+            return []
 
     def run(self,
             days_back: int = 3,
@@ -75,9 +112,9 @@ class DailyJob:
         执行一次日报任务
 
         Args:
-            days_back: 向前回溯天数
-            top_n: 发送前取TopN篇（按相关性）
-            summary_batch_size: DeepSeek批大小（并发度）
+            days_back: 回溯天数
+            top_n: 发送前取TopN篇
+            summary_batch_size: AI并发批大小
             only_new: True仅推送新论文（已处理过的不再推送）
             send_email: 是否发送邮件
             html_out: 指定HTML输出路径，默认写入 out/daily_YYYYMMDD.html
@@ -129,14 +166,31 @@ class DailyJob:
 
         # 5) 合并元数据，确保主题/相关性在邮件中显示
         merged_papers = self._merge_meta(filtered_dict, ideas_dict)
+        
+        # 🆕 6) 质量评估（异步，使用相同的batch_size）
+        quality_dict: List[Dict[str, Any]] = asyncio.run(self._evaluate_async(merged_papers, batch_size=summary_batch_size))
+        stats["evaluated"] = len(quality_dict)
+        
+        # 🆕 7) 合并质量评估结果
+        final_papers = self._merge_quality(merged_papers, quality_dict)
+        
+        # 🆕 8) 按质量评分重新排序（质量评分优先，相关性次之）
+        final_papers = sorted(
+            final_papers,
+            key=lambda p: (
+                p.get('quality_score', 0) * 0.7 +  # 质量评分权重70%
+                p.get('relevance_score', 0) * 10 * 0.3  # 相关性权重30%
+            ),
+            reverse=True
+        )
 
-        # 6) 格式化邮件
+        # 9) 格式化邮件
         formatter = EmailFormatter()
-        html, email_stats = formatter.format_papers_to_html(merged_papers)
-        plain = formatter.generate_plain_text_email(merged_papers)
+        html, email_stats = formatter.format_papers_to_html(final_papers)
+        plain = formatter.generate_plain_text_email(final_papers)
         stats["email_stats"] = email_stats
 
-        # 7) 发送邮件（可选）
+        # 10) 发送邮件（可选）
         sent_stats = None
         if send_email:
             email_config = self.cm.get_email_config()
@@ -144,33 +198,28 @@ class DailyJob:
             if recipients and email_config.get('sender_email'):
                 sender = EmailSender(email_config)
                 subject = f"【Arxiv论文日报】{datetime.utcnow().strftime('%Y-%m-%d')}"
-                # 默认重试次数在 EmailSender 内已改为 1，可被配置覆盖
-                sent_stats = sender.send_batch_emails(recipients, subject, html, plain, max_retries=email_config.get("max_retries", 1))
+                # 🔧 修正：使用正确的方法名 send_batch_emails
+                sent_stats = sender.send_batch_emails(recipients, subject, html, plain)
                 stats["send_result"] = sent_stats
                 logger.info(f"邮件发送完成: {sent_stats}")
             else:
                 logger.warning("邮件配置不完整，跳过发送")
-                stats["send_result"] = {"skipped": True, "reason": "email config incomplete"}
 
-        # 8) 落盘输出
-        date_tag = datetime.utcnow().strftime("%Y%m%d")
-        html_path = html_out or os.path.join(self.output_dir, f"daily_{date_tag}.html")
-        with open(html_path, "w", encoding="utf-8") as f:
+        # 11) 落盘
+        if not html_out:
+            html_out = os.path.join(self.output_dir, f"daily_{datetime.utcnow().strftime('%Y%m%d')}.html")
+        with open(html_out, 'w', encoding='utf-8') as f:
             f.write(html)
-        stats["html_output"] = html_path
+        logger.info(f"HTML已保存: {html_out}")
 
-        report_path = os.path.join(self.output_dir, f"report_{date_tag}.json")
-        try:
-            import json
-            with open(report_path, "w", encoding="utf-8") as f:
-                json.dump(stats, f, ensure_ascii=False, indent=2)
-            stats["report_output"] = report_path
-        except Exception as e:
-            logger.warning(f"写入报告失败: {e}")
+        report_path = os.path.join(self.output_dir, f"report_{datetime.utcnow().strftime('%Y%m%d')}.json")
+        import json
+        with open(report_path, 'w', encoding='utf-8') as f:
+            json.dump(stats, f, ensure_ascii=False, indent=2)
+        logger.info(f"报告已保存: {report_path}")
 
-        end = datetime.utcnow()
-        stats["end_at"] = end.isoformat()
-        stats["elapsed_sec"] = (end - start).total_seconds()
-        logger.info(f"日报任务完成，总耗时 {stats['elapsed_sec']:.2f}s")
-
+        stats["html_out"] = html_out
+        stats["report_out"] = report_path
+        stats["end_at"] = datetime.utcnow().isoformat()
+        
         return stats
