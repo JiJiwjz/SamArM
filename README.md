@@ -271,21 +271,3 @@ Arxiv-Mailbox/
 └─ README.md
 ```
 
----
-
-## 开发建议
-
-- 搜索范围与策略可在 `ArxivCrawler` 中调整（OR/AND/keyword_only/category_only）。
-- 邮件模板在 `src/sender/email_templates.py` 中可自定义样式与字段。
-- DeepSeek 并发 `--batch-size` 取 2–5 更稳妥；`--top-n` 控制每日总结数量。
-- 版本发布建议：
-  ```bash
-  git tag v0.1.0
-  git push origin v0.1.0
-  ```
-
----
-
-## 许可证
-
-本项目仅用于学习与研究目的。若需开源许可证（如 MIT/Apache-2.0），可在根目录添加 LICENSE 文件后在此处声明。
