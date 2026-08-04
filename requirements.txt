@@ -2,6 +2,7 @@
 arxiv==2.1.0
 requests==2.31.0
 beautifulsoup4==4.12.2
+aiohttp==3.9.5
 
 # 数据处理
 pandas==2.1.3

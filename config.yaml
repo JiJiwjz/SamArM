@@ -20,6 +20,9 @@ arxiv:
   max_results: 50
   sort_by: "submittedDate"  # submittedDate|relevance|lastUpdatedDate
   sort_order: "descending"
+  # 检索模式：or|and|keyword_only|category_only
+  # keyword_only = 仅用上述关键词检索，避免大分类结果挤占 max_results 上限导致漏检
+  search_mode: "keyword_only"
 
 # ============ 深度学习API配置 ============
 deepseek:

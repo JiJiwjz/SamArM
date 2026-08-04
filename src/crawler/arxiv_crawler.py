@@ -97,7 +97,7 @@ class ArxivCrawler:
         
         for keyword in self.keywords:
             if keyword.strip():
-                query_parts.append(f"all:{keyword}")
+                query_parts.append(f'all:"{keyword.strip()}"')
         
         for category in self.categories:
             if category.strip():
@@ -115,7 +115,7 @@ class ArxivCrawler:
     
     def _build_and_query(self) -> str:
         """使用AND逻辑构建查询（严格匹配）"""
-        keyword_part = " OR ".join([f"all:{k}" for k in self.keywords if k.strip()])
+        keyword_part = " OR ".join([f'all:"{k.strip()}"' for k in self.keywords if k.strip()])
         category_part = " OR ".join([f"cat:{c}" for c in self.categories if c.strip()])
         
         if keyword_part and category_part:
@@ -132,7 +132,7 @@ class ArxivCrawler:
     
     def _build_keyword_query(self) -> str:
         """仅使用关键词查询"""
-        query_parts = [f"all:{k}" for k in self.keywords if k.strip()]
+        query_parts = [f'all:"{k.strip()}"' for k in self.keywords if k.strip()]
         if not query_parts:
             query_parts.append("cat:cs.CV")
         

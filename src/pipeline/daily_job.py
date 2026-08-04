@@ -134,6 +134,8 @@ class DailyJob:
         # 1) 爬取
         arxiv_config = self.cm.get_arxiv_config()
         crawler = ArxivCrawler(arxiv_config)
+        # 检索模式：keyword_only 仅用关键词检索（分类检索结果太多会挤占max_results上限，漏掉目标论文）
+        crawler.set_search_mode(arxiv_config.get('search_mode', 'or'))
         papers = crawler.fetch_papers(days_back=days_back)
         papers_dict = [p.to_dict() for p in papers]
         stats["fetched"] = len(papers_dict)

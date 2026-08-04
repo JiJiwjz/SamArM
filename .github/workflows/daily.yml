@@ -48,7 +48,7 @@ jobs:
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS }}
           DINGTALK_ENABLED: "false"
-        run: python main.py run-once --days-back 3 --top-n 10
+        run: python main.py run-once --days-back 1 --top-n 10
 
       - name: Upload HTML report
         if: always()
