@@ -1,16 +1,16 @@
 # Sam_ArM
 
-Sam_ArM (Arxiv-Mailbox) 是一个自动化的 Arxiv 论文日报系统。这个项目旨在每天从 Arxiv 上找出关于特定领域的文章，根据相关性进行排序，并基于 AI 解读（部分代码使用 Claude 辅助编写）。这个项目的流程可以总结为：
+Sam_ArM (Arxiv-Mailbox) 是一个自动化的 Arxiv 论文日报系统，专注于 **Image Restoration（图像复原）** 方向（去噪、去模糊、去雨、去雾、超分辨率、补全、低光增强等）。每天从 Arxiv 上找出该领域的新文章，根据相关性进行排序，并基于 AI 解读（部分代码使用 Claude 辅助编写）。这个项目的流程可以总结为：
 > 爬取 → 去重 → 分类筛选 → AI 总结（DeepSeek） → 邮件格式化与发送 → 定时调度，全流程打通
 
-- 灵活关键词/学科配置（支持 OR/AND/分类等模式）
+- 聚焦 Image Restoration 方向的关键词/分类配置与主题过滤
 - 智能主题分类与相关性打分（保留分数供后续使用）
-- DeepSeek 异步并发总结，失败自动降级为摘要截断
-- HTML 邮件模板 + 纯文本备选
-- 每日定时推送，支持仅推送“新论文”
+- DeepSeek（deepseek-v4-flash）异步并发总结与五维度质量评估，失败自动降级为摘要截断
+- 精美 HTML 邮件模板（Light Mode）+ 纯文本备选
+- GitHub Actions 每日自动推送，支持仅推送"新论文"
 - 结果落盘（HTML 日报 + JSON 报告），可留档回溯
 
-> 当前版本：v0.1.0
+> 当前版本：v0.2.0
 
 ---
 
@@ -21,6 +21,7 @@ Sam_ArM (Arxiv-Mailbox) 是一个自动化的 Arxiv 论文日报系统。这个�
 - [配置说明](#配置说明)
   - [.env（敏感配置）](#env敏感配置)
   - [config.yaml（业务配置）](#configyaml业务配置)
+- [GitHub Actions 部署（推荐）](#github-actions-部署推荐)
 - [快速开始](#快速开始)
 - [命令行使用](#命令行使用)
 - [模块化测试](#模块化测试)
@@ -80,8 +81,8 @@ vim .env
 # ============ DeepSeek API ============
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxx
 DEEPSEEK_API_URL=https://api.deepseek.com/v1 # 可以不用改
-DEEPSEEK_MODEL=deepseek-chat                 # 可以不用改，如果需要推理模型，只需改为 deepseek-reasoner
-DEEPSEEK_TIMEOUT=30
+DEEPSEEK_MODEL=deepseek-v4-flash             # 可以不用改
+DEEPSEEK_TIMEOUT=60
 
 # ============ 邮件（以 QQ 邮箱为例） ============
 SENDER_EMAIL=your@qq.com
@@ -105,26 +106,60 @@ LOG_LEVEL=INFO
 
 ```yaml
 arxiv:
-  keywords:
-    - "image denoising"         # 这些部分可以根据需要灵活更改
+  keywords:                      # 仅 Image Restoration 方向，可按需增删
+    - "image restoration"
+    - "image denoising"
+    - "image deblurring"
     - "image deraining"
-    - "reinforcement learning"
-    - "embodied AI"
+    - "image dehazing"
+    - "image super-resolution"
+    - "image inpainting"
+    - "low-light image enhancement"
   categories:
     - "cs.CV"
-    - "cs.AI"
-    - "cs.LG"
+    - "eess.IV"
   max_results: 50
   sort_by: "submittedDate"  # 可选: submittedDate|relevance|lastUpdatedDate
 
 email:
-  subject_prefix: "【Arxiv论文日报】"
+  subject_prefix: "【Image Restoration日报】"
 
 deepseek:
   # 可在此覆盖 .env 的默认（通常保持为空）
-  # model: "deepseek-chat"
-  # timeout: 30
+  # model: "deepseek-v4-flash"
+  # timeout: 60
 ```
+
+> 说明：论文筛选由 `src/filter/paper_filter.py` 中 Image Restoration 专属主题词库把关，
+> 未命中任何复原关键词的论文会被直接过滤，邮件中只会出现该方向的内容。
+
+---
+
+## GitHub Actions 部署（推荐）
+
+仓库内置工作流 [.github/workflows/daily.yml](./.github/workflows/daily.yml)，**每天北京时间 09:00**（UTC 01:00）自动运行完整流程并发送邮件，也可在 Actions 页面手动触发（Run workflow）。
+
+### 配置步骤
+
+在仓库页面进入 **Settings → Secrets and variables → Actions → New repository secret**，依次添加：
+
+| Secret 名称 | 说明 |
+| --- | --- |
+| `DEEPSEEK_API_KEY` | DeepSeek API 密钥（从 platform.deepseek.com 获取） |
+| `SENDER_EMAIL` | 发件邮箱地址（如 QQ 邮箱） |
+| `SENDER_PASSWORD` | 邮箱 SMTP 授权码（QQ 邮箱需在设置中开启 SMTP 并获取授权码） |
+| `SMTP_SERVER` | SMTP 服务器（如 `smtp.qq.com`） |
+| `SMTP_PORT` | SMTP 端口（SSL 用 `465`，STARTTLS 用 `587`） |
+| `RECIPIENT_EMAILS` | 收件人邮箱，多个用 `\|` 分隔 |
+
+配置完成后，到 **Actions → Daily Image Restoration Report → Run workflow** 手动跑一次验证，成功后每日自动执行。
+
+### 工作流细节
+
+- 去重缓存 `data/processed_papers.json` 通过 `actions/cache` 在多次运行间持久化，保证"仅推送新论文"在云端同样生效；
+- 每次运行生成的 HTML 日报与 JSON 报告会作为 Artifact 保留 14 天，可在运行记录页下载；
+- GitHub 定时任务在高峰期可能延迟几分钟，属正常现象；
+- 如需调整推送时间，修改 `daily.yml` 中的 cron 表达式（注意使用 UTC 时间）。
 
 ---
 
@@ -254,15 +289,17 @@ python test_sender.py
 
 ```
 Arxiv-Mailbox/
+├─ .github/workflows/    # GitHub Actions 每日定时工作流
 ├─ src/
 │  ├─ crawler/           # arxiv 爬虫
-│  ├─ filter/            # 去重 + 主题分类 + 相关性评分
+│  ├─ filter/            # 去重 + 主题分类 + 相关性评分（Image Restoration 词库）
 │  ├─ extractor/         # DeepSeek 客户端 + 思想提取（异步批处理）
 │  ├─ sender/            # 邮件模板 + 格式化 + 发送（默认仅尝试一次）
 │  └─ pipeline/          # DailyJob 编排（整合全流程）
 ├─ data/                 # 去重缓存与本地数据
 ├─ out/                  # 产出HTML日报与JSON报告（已忽略）
 ├─ main.py               # CLI 入口（run-once/schedule）
+├─ preview_email.py      # 邮件模板本地预览（模拟数据 + 浏览器打开）
 ├─ test_*.py             # 各阶段独立测试脚本
 ├─ config.yaml           # 业务配置
 ├─ .env                  # 敏感配置（不提交）

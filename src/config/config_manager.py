@@ -4,6 +4,7 @@
 """
 
 import os
+import re
 import yaml
 from dotenv import load_dotenv
 from typing import Dict, Any, Optional
@@ -39,6 +40,8 @@ class ConfigManager:
         if os.path.exists(config_file):
             with open(config_file, 'r', encoding='utf-8') as f:
                 yaml_config = yaml.safe_load(f) or {}
+                # 解析 ${VAR} 占位符并清理未设置的项
+                yaml_config = self._drop_none(self._resolve_env_placeholders(yaml_config))
                 self._config = self._merge_configs(yaml_config)
         else:
             logger.warning(f"配置文件 {config_file} 不存在，使用环境变量配置")
@@ -47,41 +50,99 @@ class ConfigManager:
         self._validate_config()
         logger.info("配置加载完成")
     
+    @staticmethod
+    def _resolve_env_placeholders(value: Any) -> Any:
+        """
+        递归解析配置值中的 ${VAR} 环境变量占位符
+        完整匹配 ${VAR} 的字符串会被替换为对应环境变量的值；
+        环境变量未设置时返回 None（随后由 _drop_none 清理）
+        """
+        if isinstance(value, dict):
+            return {k: ConfigManager._resolve_env_placeholders(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [ConfigManager._resolve_env_placeholders(v) for v in value]
+        if isinstance(value, str):
+            m = re.fullmatch(r'\$\{(\w+)\}', value.strip())
+            if m:
+                return os.getenv(m.group(1))
+        return value
+    
+    @staticmethod
+    def _drop_none(value: Any) -> Any:
+        """递归移除值为 None 的配置项，使默认值/降级逻辑生效"""
+        if isinstance(value, dict):
+            return {k: ConfigManager._drop_none(v) for k, v in value.items() if v is not None}
+        if isinstance(value, list):
+            return [ConfigManager._drop_none(v) for v in value]
+        return value
+    
     def _load_from_env(self) -> Dict[str, Any]:
-        """从环境变量加载配置"""
-        return {
-            'arxiv': {
-                'keywords': os.getenv('ARXIV_KEYWORDS', '').split('|'),
-                'categories': os.getenv('ARXIV_CATEGORIES', 'cs.CV,cs.AI,cs.LG').split(','),
-                'max_results': int(os.getenv('ARXIV_MAX_RESULTS', 50)),
-                'sort_by': os.getenv('ARXIV_SORT_BY', 'submittedDate'),
-            },
-            'deepseek': {
-                'api_key': os.getenv('DEEPSEEK_API_KEY'),
-                'api_url': os.getenv('DEEPSEEK_API_URL', 'https://api.deepseek.com/v1'),
-                'model': os.getenv('DEEPSEEK_MODEL', 'deepseek-chat'),
-                'timeout': int(os.getenv('DEEPSEEK_TIMEOUT', 30)),
-            },
-            'email': {
-                'sender_email': os.getenv('SENDER_EMAIL'),
-                'sender_password': os.getenv('SENDER_PASSWORD'),
-                'smtp_server': os.getenv('SMTP_SERVER'),
-                'smtp_port': int(os.getenv('SMTP_PORT', 587)),
-                'recipients': os.getenv('RECIPIENT_EMAILS', '').split('|'),
-            },
-            'scheduler': {
-                'execute_time': os.getenv('SCHEDULER_TIME', '09:00'),
-                'frequency': os.getenv('SCHEDULER_FREQUENCY', 'daily'),
-            },
-            'logging': {
-                'level': os.getenv('LOG_LEVEL', 'INFO'),
-                'file': os.getenv('LOG_FILE', 'logs/arxiv_mailbot.log'),
-            },
-            'storage': {
-                'data_dir': os.getenv('DATA_DIR', 'data'),
-                'format': os.getenv('DATA_FORMAT', 'json'),
-            }
-        }
+        """从环境变量加载配置（仅包含实际设置了的变量，未设置的不覆盖YAML）"""
+        config: Dict[str, Any] = {}
+        
+        arxiv = {}
+        if os.getenv('ARXIV_KEYWORDS'):
+            arxiv['keywords'] = os.getenv('ARXIV_KEYWORDS').split('|')
+        if os.getenv('ARXIV_CATEGORIES'):
+            arxiv['categories'] = os.getenv('ARXIV_CATEGORIES').split(',')
+        if os.getenv('ARXIV_MAX_RESULTS'):
+            arxiv['max_results'] = int(os.getenv('ARXIV_MAX_RESULTS'))
+        if os.getenv('ARXIV_SORT_BY'):
+            arxiv['sort_by'] = os.getenv('ARXIV_SORT_BY')
+        if arxiv:
+            config['arxiv'] = arxiv
+        
+        deepseek = {}
+        if os.getenv('DEEPSEEK_API_KEY'):
+            deepseek['api_key'] = os.getenv('DEEPSEEK_API_KEY')
+        if os.getenv('DEEPSEEK_API_URL'):
+            deepseek['api_url'] = os.getenv('DEEPSEEK_API_URL')
+        if os.getenv('DEEPSEEK_MODEL'):
+            deepseek['model'] = os.getenv('DEEPSEEK_MODEL')
+        if os.getenv('DEEPSEEK_TIMEOUT'):
+            deepseek['timeout'] = int(os.getenv('DEEPSEEK_TIMEOUT'))
+        if deepseek:
+            config['deepseek'] = deepseek
+        
+        email = {}
+        if os.getenv('SENDER_EMAIL'):
+            email['sender_email'] = os.getenv('SENDER_EMAIL')
+        if os.getenv('SENDER_PASSWORD'):
+            email['sender_password'] = os.getenv('SENDER_PASSWORD')
+        if os.getenv('SMTP_SERVER'):
+            email['smtp_server'] = os.getenv('SMTP_SERVER')
+        if os.getenv('SMTP_PORT'):
+            email['smtp_port'] = int(os.getenv('SMTP_PORT'))
+        if os.getenv('RECIPIENT_EMAILS'):
+            email['recipients'] = os.getenv('RECIPIENT_EMAILS').split('|')
+        if email:
+            config['email'] = email
+        
+        scheduler = {}
+        if os.getenv('SCHEDULER_TIME'):
+            scheduler['execute_time'] = os.getenv('SCHEDULER_TIME')
+        if os.getenv('SCHEDULER_FREQUENCY'):
+            scheduler['frequency'] = os.getenv('SCHEDULER_FREQUENCY')
+        if scheduler:
+            config['scheduler'] = scheduler
+        
+        logging_cfg = {}
+        if os.getenv('LOG_LEVEL'):
+            logging_cfg['level'] = os.getenv('LOG_LEVEL')
+        if os.getenv('LOG_FILE'):
+            logging_cfg['file'] = os.getenv('LOG_FILE')
+        if logging_cfg:
+            config['logging'] = logging_cfg
+        
+        storage = {}
+        if os.getenv('DATA_DIR'):
+            storage['data_dir'] = os.getenv('DATA_DIR')
+        if os.getenv('DATA_FORMAT'):
+            storage['format'] = os.getenv('DATA_FORMAT')
+        if storage:
+            config['storage'] = storage
+        
+        return config
     
     def _merge_configs(self, yaml_config: Dict) -> Dict:
         """合并YAML配置和环境变量，环境变量优先级更高"""

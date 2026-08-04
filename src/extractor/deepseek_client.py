@@ -113,7 +113,8 @@ class DeepSeekClient:
             {"role": "user", "content": f"标题：{title}\n\n摘要：{summary}"}
         ]
         
-        return await self._call_api(messages, temperature=0.5, max_tokens=500)
+        # 推理模型的思考过程也占用 max_tokens，预留充足额度
+        return await self._call_api(messages, temperature=0.5, max_tokens=2000)
     
     async def evaluate_paper_quality(self, title: str, summary: str, 
                                      authors: list = None) -> Optional[Dict[str, Any]]:
@@ -168,7 +169,7 @@ class DeepSeekClient:
             {"role": "user", "content": user_content}
         ]
         
-        response = await self._call_api(messages, temperature=0.3, max_tokens=300)
+        response = await self._call_api(messages, temperature=0.3, max_tokens=1500)
         
         if not response:
             return None

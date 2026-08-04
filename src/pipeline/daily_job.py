@@ -152,7 +152,8 @@ class DailyJob:
         logger.info(f"去重完成: 新增{len(unique_papers)} 重复{len(duplicate_papers)} 用于筛选{len(candidate)}")
 
         # 3) 筛选与排序（按相关性）
-        filter_obj = PaperFilter(min_relevance_score=0.0)
+        # min_relevance_score>0 保证只有命中 Image Restoration 关键词的论文才会通过
+        filter_obj = PaperFilter(min_relevance_score=0.01)
         filtered_papers, _ = filter_obj.filter_and_rank(candidate, sort_by='relevance_score')
         filtered_dict = [p.to_dict() for p in filtered_papers]
         if top_n and len(filtered_dict) > top_n:
@@ -197,8 +198,8 @@ class DailyJob:
             recipients = email_config.get('recipients', [])
             if recipients and email_config.get('sender_email'):
                 sender = EmailSender(email_config)
-                subject = f"【Arxiv论文日报】{datetime.utcnow().strftime('%Y-%m-%d')}"
-                # 🔧 修正：使用正确的方法名 send_batch_emails
+                subject_prefix = email_config.get('subject_prefix', '【Image Restoration日报】')
+                subject = f"{subject_prefix}{datetime.utcnow().strftime('%Y-%m-%d')}"
                 sent_stats = sender.send_batch_emails(recipients, subject, html, plain)
                 stats["send_result"] = sent_stats
                 logger.info(f"邮件发送完成: {sent_stats}")

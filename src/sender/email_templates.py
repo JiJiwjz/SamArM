@@ -1,6 +1,6 @@
 """
 邮件模板
-定义HTML邮件的样式和结构
+定义HTML邮件的样式和结构（Image Restoration 专题日报 · Light Mode）
 """
 
 from datetime import datetime
@@ -8,345 +8,499 @@ from datetime import datetime
 
 class EmailTemplate:
     """邮件模板类"""
-    
+
+    # 主题标签配置（Image Restoration 子方向）
+    TOPIC_LABELS = {
+        'image_restoration': '图像复原',
+        'image_denoising': '图像去噪',
+        'image_deblurring': '图像去模糊',
+        'image_deraining': '图像去雨',
+        'image_dehazing': '图像去雾',
+        'super_resolution': '超分辨率',
+        'image_inpainting': '图像补全',
+        'low_light_enhancement': '低光增强',
+    }
+
     @staticmethod
     def get_header(date_str: str, total_papers: int, topic_stats: dict = None) -> str:
         """
         生成邮件头部
-        
+
         Args:
             date_str: 日期字符串
             total_papers: 论文总数
             topic_stats: 主题统计字典
-        
+
         Returns:
             HTML头部
         """
-        topic_html = ""
+        topic_chips = ""
         if topic_stats:
-            topic_html = "<tr><td style='padding: 10px 0;'><strong>📊 主题分布：</strong> "
+            chips = []
             for topic, count in sorted(topic_stats.items(), key=lambda x: x[1], reverse=True):
-                topic_html += f"{topic}: {count}篇 | "
-            topic_html = topic_html.rstrip(" | ") + "</td></tr>"
-        
+                label = EmailTemplate.TOPIC_LABELS.get(topic, topic)
+                chips.append(f"<span class='chip'>{label}&nbsp;<b>{count}</b></span>")
+            topic_chips = "".join(chips)
+
         return f"""
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>【Arxiv论文日报】{date_str}</title>
+    <title>Image Restoration 论文日报 · {date_str}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         * {{
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }}
-        
+
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background-color: #f5f5f5;
+            font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', Roboto, Arial, sans-serif;
+            line-height: 1.7;
+            color: #3f3f46;
+            background-color: #f4f4f2;
+            -webkit-font-smoothing: antialiased;
         }}
-        
+
         .container {{
-            max-width: 800px;
+            max-width: 720px;
             margin: 0 auto;
             background-color: #ffffff;
         }}
-        
-        .header {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 40px 30px;
-            text-align: center;
+
+        /* ===== 刊头 ===== */
+        .masthead {{
+            padding: 48px 44px 36px 44px;
+            background: radial-gradient(ellipse 90% 70% at 15% 0%, rgba(249, 115, 22, 0.10) 0%, rgba(249, 115, 22, 0) 60%), #ffffff;
+            border-bottom: 1px solid #ececee;
         }}
-        
-        .header h1 {{
-            font-size: 28px;
-            margin-bottom: 10px;
-            font-weight: 600;
+
+        .kicker {{
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
+            font-size: 11px;
+            letter-spacing: 4px;
+            color: #d97706;
+            font-weight: 700;
+            margin-bottom: 20px;
         }}
-        
-        .header p {{
-            font-size: 14px;
-            opacity: 0.9;
+
+        .kicker .dot {{
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background-color: #f97316;
+            margin-right: 10px;
+            vertical-align: 1px;
         }}
-        
-        .info-box {{
-            background-color: #f0f4ff;
-            border-left: 4px solid #667eea;
-            padding: 15px 20px;
-            margin: 20px 30px;
+
+        .masthead h1 {{
+            font-size: 42px;
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -0.5px;
+            color: #18181b;
+        }}
+
+        .masthead h1 .accent {{
+            color: #f97316;
+        }}
+
+        .masthead .date-line {{
+            margin-top: 14px;
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
+            font-size: 12px;
+            color: #a1a1aa;
+            letter-spacing: 1px;
+        }}
+
+        .stat-row {{
+            margin-top: 30px;
+        }}
+
+        .stat-big {{
+            display: inline-block;
+            vertical-align: middle;
+        }}
+
+        .stat-big .num {{
+            font-size: 40px;
+            font-weight: 800;
+            color: #f97316;
+            line-height: 1;
+        }}
+
+        .stat-big .unit {{
+            font-size: 12px;
+            color: #a1a1aa;
+            margin-left: 8px;
+            letter-spacing: 1px;
+        }}
+
+        .chips {{
+            margin-top: 16px;
+        }}
+
+        .chip {{
+            display: inline-block;
+            font-size: 12px;
+            color: #78716c;
+            background-color: #fafaf9;
+            border: 1px solid #e7e5e4;
+            border-radius: 999px;
+            padding: 4px 12px;
+            margin: 4px 6px 0 0;
+        }}
+
+        .chip b {{
+            color: #d97706;
+            font-weight: 700;
+        }}
+
+        /* ===== 正文 ===== */
+        .content {{
+            padding: 12px 44px 8px 44px;
+        }}
+
+        .card {{
+            background-color: #ffffff;
+            border: 1px solid #ececee;
+            border-radius: 16px;
+            padding: 28px 26px 24px 26px;
+            margin: 22px 0;
+            box-shadow: 0 2px 10px rgba(24, 24, 27, 0.05);
+        }}
+
+        .card-head {{
+            margin-bottom: 14px;
+        }}
+
+        .idx {{
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
             font-size: 13px;
+            font-weight: 700;
+            color: #f97316;
+            letter-spacing: 1px;
+        }}
+
+        .topic-tag {{
+            font-size: 11px;
+            letter-spacing: 2px;
+            color: #78716c;
+            border: 1px solid #e4e4e7;
+            border-radius: 999px;
+            padding: 3px 11px;
+            margin-left: 10px;
+        }}
+
+        .badge {{
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            padding: 3px 11px;
+            border-radius: 999px;
+            margin-left: 10px;
+            border: 1px solid transparent;
+        }}
+
+        .badge-top {{
+            color: #b45309;
+            background-color: #fef3c7;
+            border-color: #fcd34d;
+        }}
+
+        .badge-excellent {{
+            color: #047857;
+            background-color: #d1fae5;
+            border-color: #6ee7b7;
+        }}
+
+        .badge-good {{
+            color: #1d4ed8;
+            background-color: #dbeafe;
+            border-color: #93c5fd;
+        }}
+
+        .badge-normal {{
+            color: #57534e;
+            background-color: #f5f5f4;
+            border-color: #e7e5e4;
+        }}
+
+        .badge-weak {{
+            color: #a1a1aa;
+            background-color: #fafaf9;
+            border-color: #e4e4e7;
+        }}
+
+        .title {{
+            font-size: 19px;
+            font-weight: 700;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }}
+
+        .title a {{
+            color: #18181b;
+            text-decoration: none;
+        }}
+
+        .title a:hover {{
+            color: #ea580c;
+        }}
+
+        .meta {{
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
+            font-size: 11.5px;
+            color: #a1a1aa;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }}
+
+        .authors {{
+            font-size: 12.5px;
+            color: #78716c;
+            margin-bottom: 4px;
+        }}
+
+        /* ===== 区块标签 ===== */
+        .label {{
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 3px;
+            color: #27272a;
+            border-left: 3px solid #f97316;
+            padding-left: 10px;
+            margin: 22px 0 12px 0;
+        }}
+
+        .summary {{
+            font-size: 13.5px;
+            line-height: 1.9;
+            color: #3f3f46;
+            text-align: justify;
+        }}
+
+        /* ===== 五维度评分 ===== */
+        .dim-row {{
+            margin-bottom: 9px;
+            font-size: 0;
+        }}
+
+        .dim-name {{
+            display: inline-block;
+            width: 88px;
+            font-size: 12px;
+            color: #78716c;
+            vertical-align: middle;
+        }}
+
+        .dim-track {{
+            display: inline-block;
+            width: 58%;
+            height: 5px;
+            background-color: #eeeeef;
+            border-radius: 999px;
+            vertical-align: middle;
+            overflow: hidden;
+        }}
+
+        .dim-fill {{
+            display: block;
+            height: 5px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #f59e0b, #ea580c);
+        }}
+
+        .dim-score {{
+            display: inline-block;
+            width: 46px;
+            text-align: right;
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #d97706;
+            vertical-align: middle;
+        }}
+
+        /* ===== 评语 / 优缺点 ===== */
+        blockquote {{
+            margin: 4px 0 0 0;
+            padding: 2px 0 2px 16px;
+            border-left: 2px solid #f97316;
+            font-size: 12.5px;
+            line-height: 1.9;
+            color: #78716c;
+            font-style: italic;
+        }}
+
+        .pros, .cons {{
+            padding: 12px 16px;
+            font-size: 12.5px;
+            margin-top: 10px;
+            border-radius: 10px;
+        }}
+
+        .pros {{
+            background-color: #f0fdf4;
+            border: 1px solid #bbf7d0;
+        }}
+
+        .cons {{
+            background-color: #fff1f2;
+            border: 1px solid #fecdd3;
+        }}
+
+        .pros strong, .cons strong {{
+            display: block;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+        }}
+
+        .pros strong {{ color: #15803d; }}
+        .cons strong {{ color: #be123c; }}
+
+        .pros ul, .cons ul {{
+            padding-left: 16px;
+            color: #3f3f46;
             line-height: 1.8;
         }}
-        
-        .info-box strong {{
-            color: #667eea;
+
+        /* ===== 关键词与按钮 ===== */
+        .keywords {{
+            margin-top: 18px;
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
+            font-size: 11px;
+            color: #b6b2ab;
+            letter-spacing: 0.5px;
         }}
-        
-        .content {{
-            padding: 0 30px 30px 30px;
-        }}
-        
-        .paper-card {{
-            background-color: #fafafa;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            transition: all 0.3s ease;
-        }}
-        
-        .paper-card:hover {{
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            border-color: #667eea;
-        }}
-        
-        .paper-number {{
+
+        .read-btn {{
             display: inline-block;
-            background-color: #667eea;
-            color: white;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
+            margin-top: 16px;
+            padding: 10px 24px;
+            background: linear-gradient(135deg, #fbbf24, #f97316);
+            color: #18181b;
+            text-decoration: none;
+            font-size: 12.5px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            border-radius: 999px;
+        }}
+
+        /* ===== 页脚 ===== */
+        .colophon {{
+            padding: 30px 44px 40px 44px;
             text-align: center;
-            line-height: 28px;
+            border-top: 1px solid #ececee;
+        }}
+
+        .colophon .glow {{
+            width: 48px;
+            height: 3px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #f59e0b, #ea580c);
+            margin: 0 auto 18px auto;
+        }}
+
+        .colophon p {{
             font-size: 12px;
-            font-weight: bold;
-            margin-right: 10px;
+            color: #a1a1aa;
+            line-height: 2;
         }}
-        
-        .paper-title {{
-            font-size: 16px;
-            font-weight: 600;
-            color: #1a1a1a;
-            margin: 10px 0;
-            line-height: 1.4;
+
+        .colophon .brand {{
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, 'Courier New', monospace;
+            font-size: 12px;
+            letter-spacing: 2px;
+            color: #78716c;
         }}
-        
-        .paper-title a {{
-            color: #667eea;
+
+        .colophon a {{
+            color: #d97706;
             text-decoration: none;
         }}
-        
-        .paper-title a:hover {{
-            text-decoration: underline;
-        }}
-        
-        .paper-meta {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            font-size: 12px;
-            color: #666;
-            margin: 10px 0;
-        }}
-        
-        .paper-meta span {{
-            display: flex;
-            align-items: center;
-        }}
-        
-        .paper-meta strong {{
-            color: #333;
-            margin-right: 5px;
-        }}
-        
-        .paper-authors {{
-            font-size: 13px;
-            color: #555;
-            margin: 8px 0;
-            font-style: italic;
-        }}
-        
-        .paper-topic {{
-            display: inline-block;
-            background-color: #e8f0fe;
-            color: #667eea;
-            padding: 3px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            margin: 5px 5px 5px 0;
-        }}
-        
-        .paper-score {{
-            display: inline-block;
-            background-color: #fff3e0;
-            color: #f57c00;
-            padding: 3px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            margin: 5px 5px 5px 0;
-        }}
-        
-        .quality-badge {{
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            margin: 5px 5px 5px 0;
-        }}
-        
-        .quality-top {{
-            background-color: #fff3e0;
-            color: #e65100;
-        }}
-        
-        .quality-excellent {{
-            background-color: #e8f5e9;
-            color: #2e7d32;
-        }}
-        
-        .quality-good {{
-            background-color: #e3f2fd;
-            color: #1565c0;
-        }}
-        
-        .quality-normal {{
-            background-color: #f3e5f5;
-            color: #6a1b9a;
-        }}
-        
-        .quality-weak {{
-            background-color: #fafafa;
-            color: #757575;
-        }}
-        
-        .paper-summary {{
-            background-color: #ffffff;
-            border-left: 3px solid #667eea;
-            padding: 12px 15px;
-            margin: 12px 0;
-            font-size: 13px;
-            line-height: 1.7;
-            color: #555;
-        }}
-        
-        .quality-reasoning {{
-            background-color: #fffef7;
-            border-left: 3px solid #ffa726;
-            padding: 10px 15px;
-            margin: 12px 0;
-            font-size: 12px;
-            line-height: 1.6;
-            color: #666;
-            font-style: italic;
-        }}
-        
-        .paper-keywords {{
-            font-size: 12px;
-            color: #999;
-            margin: 10px 0;
-        }}
-        
-        .paper-keywords strong {{
-            color: #666;
-        }}
-        
-        .paper-link {{
-            display: inline-block;
-            background-color: #667eea;
-            color: white;
-            padding: 6px 14px;
-            border-radius: 4px;
-            text-decoration: none;
-            font-size: 12px;
-            font-weight: 600;
-            margin-top: 10px;
-            transition: background-color 0.3s;
-        }}
-        
-        .paper-link:hover {{
-            background-color: #764ba2;
-        }}
-        
-        .footer {{
-            background-color: #f5f5f5;
-            border-top: 1px solid #e0e0e0;
-            padding: 20px 30px;
-            font-size: 12px;
-            color: #999;
-            text-align: center;
-        }}
-        
-        .footer a {{
-            color: #667eea;
-            text-decoration: none;
-        }}
-        
-        .divider {{
-            height: 1px;
-            background-color: #e0e0e0;
-            margin: 20px 0;
-        }}
-        
+
         @media only screen and (max-width: 600px) {{
-            .container {{
-                width: 100%;
+            .masthead {{
+                padding: 34px 22px 28px 22px;
             }}
-            
-            .header {{
-                padding: 30px 20px;
+
+            .masthead h1 {{
+                font-size: 30px;
             }}
-            
-            .header h1 {{
-                font-size: 22px;
-            }}
-            
+
             .content {{
-                padding: 0 20px 20px 20px;
+                padding: 8px 16px 4px 16px;
             }}
-            
-            .info-box {{
-                margin: 15px 20px;
-                padding: 12px 15px;
-                font-size: 12px;
+
+            .card {{
+                padding: 20px 16px 18px 16px;
+                border-radius: 14px;
             }}
-            
-            .paper-card {{
-                padding: 15px;
-                margin-bottom: 15px;
+
+            .title {{
+                font-size: 16.5px;
             }}
-            
-            .paper-meta {{
-                gap: 10px;
+
+            .dim-name {{
+                width: 78px;
                 font-size: 11px;
+            }}
+
+            .dim-track {{
+                width: 48%;
+            }}
+
+            .colophon {{
+                padding: 24px 22px 32px 22px;
             }}
         }}
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>📚 Arxiv论文日报</h1>
-            <p>{date_str}</p>
+        <div class="masthead">
+            <div class="kicker"><span class="dot"></span>IMAGE RESTORATION DAILY</div>
+            <h1>Image Restoration<br><span class="accent">论文日报</span></h1>
+            <div class="date-line">{date_str} · POWERED BY DEEPSEEK AI</div>
+            <div class="stat-row">
+                <span class="stat-big"><span class="num">{total_papers:02d}</span><span class="unit">篇今日精选</span></span>
+            </div>
+            <div class="chips">{topic_chips}</div>
         </div>
-        
-        <div class="info-box">
-            <table style="width: 100%; border-collapse: collapse;">
-                <tr><td style="padding: 5px 0;"><strong>📊 总论文数：</strong> {total_papers} 篇</td></tr>
-                {topic_html}
-            </table>
-        </div>
-        
+
         <div class="content">
 """
+
+    @staticmethod
+    def _dimension_row(label: str, score: float) -> str:
+        """生成单个维度的评分进度条"""
+        pct = max(0, min(100, score * 10))
+        return f"""
+                        <div class="dim-row">
+                            <span class="dim-name">{label}</span>
+                            <span class="dim-track"><span class="dim-fill" style="width: {pct:.0f}%;"></span></span>
+                            <span class="dim-score">{score:.1f}</span>
+                        </div>"""
 
     @staticmethod
     def get_paper_card(index: int, paper: dict) -> str:
         """
         生成单篇论文的卡片HTML
-        
+
         Args:
             index: 论文序号
             paper: 论文信息字典（包含AI总结和质量评估）
-        
+
         Returns:
             HTML卡片
         """
@@ -360,8 +514,8 @@ class EmailTemplate:
         arxiv_url = paper.get('arxiv_url', '#')
         paper_id = paper.get('paper_id', '')
         matched_keywords = paper.get('matched_keywords', [])
-        
-        # 🆕 提取五维度评分
+
+        # 提取五维度评分
         quality_score = paper.get('quality_score')
         quality_level = paper.get('quality_level')
         quality_reasoning = paper.get('quality_reasoning')
@@ -372,175 +526,114 @@ class EmailTemplate:
         impact_potential = paper.get('impact_potential_score')
         strengths = paper.get('strengths', [])
         weaknesses = paper.get('weaknesses', [])
-        
+
         # 格式化作者
         authors_str = ', '.join(authors[:3])
         if len(authors) > 3:
-            authors_str += f' 等'
-        
+            authors_str += ' et al.'
+
         # 格式化关键词
-        keywords_str = ', '.join(matched_keywords[:5]) if matched_keywords else '无'
+        keywords_str = ' · '.join(matched_keywords[:5]) if matched_keywords else '—'
         if len(matched_keywords) > 5:
-            keywords_str += f' 等'
-        
-        # 主题标签配置（扩展新增主题）
-        topic_labels = {
-            'image_denoising': '🖼️ 图像去噪',
-            'image_deraining': '🌧️ 图像去雨',
-            'image_generation': '🎨 图像生成',
-            'diffusion_models': '🌊 扩散模型',
-            'large_language_models': '🗣️ 大语言模型',
-            'multimodal_large_models': '🎭 多模态大模型',
-            'model_architecture': '🏗️ 模型架构',
-            'transformer_architecture': '🔶 Transformer',
-            'reinforcement_learning': '🤖 强化学习',
-            'embodied_ai': '🦾 具身智能',
-            'world_models': '🌍 世界模型',
-            '3d_vision': '📐 3D视觉',
-            'video_understanding': '🎬 视频理解',
-            'computer_vision': '👁️ 计算机视觉',
-            'deep_learning': '🧠 深度学习'
-        }
-        topic_label = topic_labels.get(topic, f'📌 {topic}')
-        
-        # 🆕 生成质量评估徽章
-        quality_badge_html = ""
+            keywords_str += ' …'
+
+        # 主题标签
+        topic_label = EmailTemplate.TOPIC_LABELS.get(topic, topic)
+
+        # 生成质量评估徽章
+        badge_html = ""
         if quality_score is not None and quality_level:
-            # 根据评分确定样式
             if quality_score >= 9:
-                badge_class = "quality-top"
-                emoji = "🏆"
+                badge_class = "badge-top"
+                mark = "★★★"
             elif quality_score >= 7:
-                badge_class = "quality-excellent"
-                emoji = "⭐"
+                badge_class = "badge-excellent"
+                mark = "★★"
             elif quality_score >= 5:
-                badge_class = "quality-good"
-                emoji = "✅"
+                badge_class = "badge-good"
+                mark = "★"
             elif quality_score >= 3:
-                badge_class = "quality-normal"
-                emoji = "📝"
+                badge_class = "badge-normal"
+                mark = "·"
             else:
-                badge_class = "quality-weak"
-                emoji = "📄"
-            
-            quality_badge_html = f'<span class="quality-badge {badge_class}">{emoji} {quality_level} ({quality_score:.1f}/10)</span>'
-        
-        # 🆕 生成五维度雷达图（文本版）
+                badge_class = "badge-weak"
+                mark = "·"
+
+            badge_html = f'<span class="badge {badge_class}">{mark} {quality_level} {quality_score:.1f}</span>'
+
+        # 生成五维度评分进度条
         dimensions_html = ""
-        if all([innovation, practicality, technical_depth, experimental_rigor, impact_potential]):
+        if all(v is not None for v in [innovation, practicality, technical_depth, experimental_rigor, impact_potential]):
+            rows = (
+                EmailTemplate._dimension_row("创新性", innovation)
+                + EmailTemplate._dimension_row("实用性", practicality)
+                + EmailTemplate._dimension_row("技术深度", technical_depth)
+                + EmailTemplate._dimension_row("实验完整性", experimental_rigor)
+                + EmailTemplate._dimension_row("影响力潜力", impact_potential)
+            )
             dimensions_html = f"""
-                <div style="background-color: #f8f9fa; border-radius: 6px; padding: 12px; margin: 12px 0;">
-                    <strong style="color: #495057;">📊 五维度评分：</strong>
-                    <div style="margin-top: 8px; font-size: 12px;">
-                        <div style="margin-bottom: 4px;">
-                            <span style="display: inline-block; width: 100px; color: #666;">💡 创新性：</span>
-                            <span style="color: #667eea; font-weight: 600;">{innovation:.1f}/10</span>
-                            <span style="color: #999; margin-left: 5px;">{'█' * int(innovation)}</span>
-                        </div>
-                        <div style="margin-bottom: 4px;">
-                            <span style="display: inline-block; width: 100px; color: #666;">🎯 实用性：</span>
-                            <span style="color: #667eea; font-weight: 600;">{practicality:.1f}/10</span>
-                            <span style="color: #999; margin-left: 5px;">{'█' * int(practicality)}</span>
-                        </div>
-                        <div style="margin-bottom: 4px;">
-                            <span style="display: inline-block; width: 100px; color: #666;">🔬 技术深度：</span>
-                            <span style="color: #667eea; font-weight: 600;">{technical_depth:.1f}/10</span>
-                            <span style="color: #999; margin-left: 5px;">{'█' * int(technical_depth)}</span>
-                        </div>
-                        <div style="margin-bottom: 4px;">
-                            <span style="display: inline-block; width: 100px; color: #666;">🧪 实验完整性：</span>
-                            <span style="color: #667eea; font-weight: 600;">{experimental_rigor:.1f}/10</span>
-                            <span style="color: #999; margin-left: 5px;">{'█' * int(experimental_rigor)}</span>
-                        </div>
-                        <div>
-                            <span style="display: inline-block; width: 100px; color: #666;">🚀 影响力潜力：</span>
-                            <span style="color: #667eea; font-weight: 600;">{impact_potential:.1f}/10</span>
-                            <span style="color: #999; margin-left: 5px;">{'█' * int(impact_potential)}</span>
-                        </div>
-                    </div>
-                </div>
+                <div class="label">评 分</div>
+                {rows}
             """
-        
-        # 🆕 生成评估理由区块
+
+        # 生成评估理由区块
         reasoning_html = ""
         if quality_reasoning:
             reasoning_html = f"""
-                <div class="quality-reasoning">
-                    <strong>💡 AI评估理由：</strong>{quality_reasoning}
-                </div>
+                <div class="label">评 语</div>
+                <blockquote>{quality_reasoning}</blockquote>
             """
-        
-        # 🆕 优点和不足
+
+        # 优点和不足
         pros_cons_html = ""
         if strengths or weaknesses:
             pros_html = ""
             if strengths:
                 pros_items = "".join([f"<li>{s}</li>" for s in strengths[:3]])
                 pros_html = f"""
-                    <div style="margin-bottom: 8px;">
-                        <strong style="color: #2e7d32;">✅ 优点：</strong>
-                        <ul style="margin: 4px 0; padding-left: 20px; font-size: 12px;">{pros_items}</ul>
+                    <div class="pros">
+                        <strong>+ 优点</strong>
+                        <ul>{pros_items}</ul>
                     </div>
                 """
-            
+
             cons_html = ""
             if weaknesses:
                 cons_items = "".join([f"<li>{w}</li>" for w in weaknesses[:3]])
                 cons_html = f"""
-                    <div>
-                        <strong style="color: #c62828;">⚠️ 不足：</strong>
-                        <ul style="margin: 4px 0; padding-left: 20px; font-size: 12px;">{cons_items}</ul>
+                    <div class="cons">
+                        <strong>− 不足</strong>
+                        <ul>{cons_items}</ul>
                     </div>
                 """
-            
-            pros_cons_html = f"""
-                <div style="background-color: #fafafa; border-radius: 6px; padding: 10px; margin: 12px 0; font-size: 12px;">
-                    {pros_html}
-                    {cons_html}
-                </div>
-            """
-        
+
+            pros_cons_html = pros_html + cons_html
+
         return f"""
-            <div class="paper-card">
-                <div>
-                    <span class="paper-number">{index}</span>
-                    <span class="paper-title">
-                        <a href="{arxiv_url}" target="_blank">{title}</a>
-                    </span>
+            <div class="card">
+                <div class="card-head">
+                    <span class="idx">{index:02d}</span>
+                    <span class="topic-tag">{topic_label}</span>
+                    {badge_html}
                 </div>
-                
-                <div class="paper-meta">
-                    <span><strong>📅 发布：</strong>{published}</span>
-                    <span><strong>📄 ID：</strong>{paper_id}</span>
+
+                <div class="title">
+                    <a href="{arxiv_url}" target="_blank">{title}</a>
                 </div>
-                
-                <div class="paper-authors">
-                    ✍️ 作者：{authors_str}
-                </div>
-                
-                <div style="margin: 10px 0;">
-                    <span class="paper-topic">{topic_label}</span>
-                    <span class="paper-score">相关性: {relevance_score:.1%}</span>
-                    {quality_badge_html}
-                </div>
-                
+
+                <div class="meta">{published} &nbsp;·&nbsp; arXiv:{paper_id} &nbsp;·&nbsp; REL {relevance_score:.0%}</div>
+                <div class="authors">{authors_str}</div>
+
+                <div class="label">摘 要</div>
+                <div class="summary">{ai_summary}</div>
+
                 {dimensions_html}
-                
-                <div class="paper-summary">
-                    <strong>🤖 AI核心思想总结：</strong><br>
-                    {ai_summary}
-                </div>
-                
                 {reasoning_html}
                 {pros_cons_html}
-                
-                <div class="paper-keywords">
-                    <strong>🏷️ 关键词：</strong>{keywords_str}
-                </div>
-                
-                <a href="{arxiv_url}" target="_blank" class="paper-link">
-                    📖 查看原文 &rarr;
-                </a>
+
+                <div class="keywords">{keywords_str}</div>
+
+                <a href="{arxiv_url}" target="_blank" class="read-btn">阅读原文 &rarr;</a>
             </div>
 """
 
@@ -548,24 +641,21 @@ class EmailTemplate:
     def get_footer() -> str:
         """
         生成邮件底部
-        
+
         Returns:
             HTML底部
         """
         return """
         </div>
-        
-        <div class="footer">
-            <div class="divider"></div>
+
+        <div class="colophon">
+            <div class="glow"></div>
+            <p class="brand">SamArM · IMAGE RESTORATION DAILY</p>
             <p>
-                这是一份自动生成的Arxiv论文日报。<br>
-                由 <strong>Arxiv Mailbot</strong> 驱动，使用DeepSeek AI生成论文总结与评估。<br>
-                <a href="https://github.com/JiJiwjz/SamArM">项目源码</a> | 
-                <a href="mailto:support@example.com">反馈建议</a>
+                本刊由 SamArM 自动生成 · DeepSeek AI 撰写摘要与评估<br>
+                <a href="https://github.com/JiJiwjz/SamArM">github.com/JiJiwjz/SamArM</a>
             </p>
-            <p style="margin-top: 10px; color: #ccc;">
-                © 2025 Arxiv Mailbot. 自动化论文推荐系统
-            </p>
+            <p>© 2025 SamArM</p>
         </div>
     </div>
 </body>
@@ -576,21 +666,21 @@ class EmailTemplate:
     def generate_email_html(cls, papers: list, topic_stats: dict = None) -> str:
         """
         生成完整的邮件HTML
-        
+
         Args:
             papers: 论文列表（已排序）
             topic_stats: 主题统计
-        
+
         Returns:
             完整的HTML邮件内容
         """
         date_str = datetime.utcnow().strftime('%Y年%m月%d日')
-        
+
         html = cls.get_header(date_str, len(papers), topic_stats)
-        
+
         for i, paper in enumerate(papers, 1):
             html += cls.get_paper_card(i, paper)
-        
+
         html += cls.get_footer()
-        
+
         return html

@@ -95,7 +95,7 @@ class EmailFormatter:
         
         text = f"""
 {'='*80}
-                    📚 Arxiv论文日报
+                    🖼️ Image Restoration 论文日报
                     {datetime.utcnow().strftime('%Y年%m月%d日')}
 {'='*80}
 
@@ -132,8 +132,8 @@ class EmailFormatter:
         
         text += f"""
 {'='*80}
-此邮件由 Arxiv Mailbot 自动生成
-© 2025 Arxiv Mailbot. 自动化论文推荐系统
+此邮件由 SamArM 自动生成（Image Restoration 专题）
+© 2025 SamArM. Automated Paper Digest
 {'='*80}
 """
         

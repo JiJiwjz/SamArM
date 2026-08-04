@@ -1,17 +1,20 @@
 # ============ arxiv爬取配置 ============
 arxiv:
-  # 搜索关键词列表
+  # 搜索关键词列表（仅 Image Restoration 方向）
   keywords:
+    - "image restoration"
     - "image denoising"
+    - "image deblurring"
     - "image deraining"
-    - "reinforcement learning"
-    - "embodied AI"
-  
+    - "image dehazing"
+    - "image super-resolution"
+    - "image inpainting"
+    - "low-light image enhancement"
+
   # 搜索分类
   categories:
     - "cs.CV"        # Computer Vision
-    - "cs.AI"        # Artificial Intelligence
-    - "cs.LG"        # Machine Learning
+    - "eess.IV"      # Image and Video Processing
   
   # 搜索参数
   max_results: 50
@@ -22,8 +25,8 @@ arxiv:
 deepseek:
   api_key: "${DEEPSEEK_API_KEY}"
   api_url: "https://api.deepseek.com/v1"
-  model: "deepseek-chat"
-  timeout: 30
+  model: "deepseek-v4-flash"
+  timeout: 60
   
   # 提示词配置
   system_prompt: |
@@ -51,7 +54,7 @@ email:
   recipients: "${RECIPIENT_EMAILS}"
   
   # 邮件设置
-  subject_prefix: "【arxiv论文日报】"
+  subject_prefix: "【Image Restoration日报】"
   send_html: true
   include_links: true
 

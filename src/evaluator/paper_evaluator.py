@@ -129,7 +129,8 @@ class PaperEvaluator:
                 {'role': 'user', 'content': prompt}
             ],
             'temperature': 0.3,  # 降低温度以获得更一致的评分
-            'max_tokens': 800
+            # 推理模型的思考过程也占用 max_tokens，预留充足额度
+            'max_tokens': 3000
         }
         
         try:
