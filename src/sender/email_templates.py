@@ -287,6 +287,18 @@ class EmailTemplate:
             text-align: justify;
         }}
 
+        /* ===== Overview 配图 ===== */
+        .overview {{
+            margin: 14px 0 4px 0;
+        }}
+
+        .overview img {{
+            display: block;
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid #ececee;
+        }}
+
         /* ===== 五维度评分 ===== */
         .dim-row {{
             margin-bottom: 9px;
@@ -540,6 +552,16 @@ class EmailTemplate:
         # 主题标签
         topic_label = EmailTemplate.TOPIC_LABELS.get(topic, topic)
 
+        # Overview 配图（arXiv HTML版首图，可能不存在）
+        overview_html = ""
+        overview_image = paper.get('overview_image')
+        if overview_image:
+            overview_html = f"""
+                <div class="overview">
+                    <img src="{overview_image}" alt="论文方法概览图">
+                </div>
+            """
+
         # 生成质量评估徽章
         badge_html = ""
         if quality_score is not None and quality_level:
@@ -623,6 +645,8 @@ class EmailTemplate:
 
                 <div class="meta">{published} &nbsp;·&nbsp; arXiv:{paper_id} &nbsp;·&nbsp; REL {relevance_score:.0%}</div>
                 <div class="authors">{authors_str}</div>
+
+                {overview_html}
 
                 <div class="label">摘 要</div>
                 <div class="summary">{ai_summary}</div>

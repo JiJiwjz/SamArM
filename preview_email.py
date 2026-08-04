@@ -33,6 +33,7 @@ MOCK_PAPERS = [
         'relevance_score': 0.85,
         'matched_keywords': ['image restoration', 'all-in-one restoration', 'degradation model', 'denoising', 'deraining'],
         'arxiv_url': 'https://arxiv.org/abs/2508.01234',
+        'overview_image': 'https://arxiv.org/html/2607.29595v1/x1.png',
         'ai_summary': '本文提出RestorFormerV2，一种面向全场景图像复原的Transformer框架。核心创新是频率感知提示学习机制：在网络各层注入可学习的频率先验提示，使单一模型无需针对特定退化类型微调即可同时处理去噪、去雨、去模糊、去雾等五种退化任务。方法在12个公开基准上取得SOTA，平均PSNR提升0.8dB，且参数量较上一代减少30%。实验表明频率提示对高频细节恢复起关键作用。',
         'quality_score': 8.7,
         'quality_level': '优秀',

@@ -6,7 +6,10 @@ Sam_ArM (Arxiv-Mailbox) 是一个自动化的 Arxiv 论文日报系统，专注�
 - 聚焦 Image Restoration 方向的关键词/分类配置与主题过滤
 - 智能主题分类与相关性打分（保留分数供后续使用）
 - DeepSeek（deepseek-v4-flash）异步并发总结与五维度质量评估，失败自动降级为摘要截断
+- 摘要按「背景→现有方法→不足→动机→核心思路→主实验（含数据集）→总结」结构生成，纯文本无 Markdown 标记
+- 自动抓取论文 Overview 配图（arXiv HTML 版首图）嵌入邮件
 - 精美 HTML 邮件模板（Light Mode）+ 纯文本备选
+- 0 篇兜底机制：时间窗口自动逐级放大（1→2→3→5→7 天），仍无新论文时降级回顾最近 7 天，避免空推送
 - GitHub Actions 每日自动推送，支持仅推送"新论文"
 - 结果落盘（HTML 日报 + JSON 报告），可留档回溯
 
@@ -120,6 +123,7 @@ arxiv:
     - "eess.IV"
   max_results: 50
   sort_by: "submittedDate"  # 可选: submittedDate|relevance|lastUpdatedDate
+  search_mode: "keyword_only"  # 仅关键词检索，避免分类结果挤占上限
 
 email:
   subject_prefix: "【Image Restoration日报】"
@@ -273,7 +277,7 @@ python test_sender.py
 - 若自定义脚本，请在邮件格式化前将筛选阶段的元数据合并回 AI 总结结果（按 `paper_id`）。
 
 3) 爬虫返回 0 条  
-- 多为时间窗口过窄。将 `--days-back` 从 1 调整为 3 或 7。  
+- 多为时间窗口过窄。流水线已内置兜底：窗口会自动从 `--days-back` 逐级放大到 2/3/5/7 天；仍为 0 时降级回顾最近 7 天论文（含已推送过的），不会再发出 0 篇的空邮件。  
 - 也可用 `test_crawler_verbose.py` 查看查询语句与时间边界。
 
 4) arxiv 速率限制  

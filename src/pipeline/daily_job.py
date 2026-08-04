@@ -131,37 +131,64 @@ class DailyJob:
             "send_email": send_email
         }
 
-        # 1) 爬取
+        # 1) 初始化爬取/去重/筛选组件
         arxiv_config = self.cm.get_arxiv_config()
         crawler = ArxivCrawler(arxiv_config)
         # 检索模式：keyword_only 仅用关键词检索（分类检索结果太多会挤占max_results上限，漏掉目标论文）
         crawler.set_search_mode(arxiv_config.get('search_mode', 'or'))
-        papers = crawler.fetch_papers(days_back=days_back)
-        papers_dict = [p.to_dict() for p in papers]
-        stats["fetched"] = len(papers_dict)
-        logger.info(f"爬取完成: {len(papers_dict)} 篇")
-
-        # 2) 去重（持久缓存）
         dedup = Deduplicator()
-        unique_papers, duplicate_papers = dedup.deduplicate_papers(papers_dict)
-        if only_new:
-            candidate = unique_papers
-        else:
-            candidate = papers_dict
-        stats["unique"] = len(unique_papers)
-        stats["duplicates"] = len(duplicate_papers)
-        stats["candidates"] = len(candidate)
-        logger.info(f"去重完成: 新增{len(unique_papers)} 重复{len(duplicate_papers)} 用于筛选{len(candidate)}")
-
-        # 3) 筛选与排序（按相关性）
         # min_relevance_score>0 保证只有命中 Image Restoration 关键词的论文才会通过
         filter_obj = PaperFilter(min_relevance_score=0.01)
-        filtered_papers, _ = filter_obj.filter_and_rank(candidate, sort_by='relevance_score')
-        filtered_dict = [p.to_dict() for p in filtered_papers]
+
+        # 2) 去重 + 3) 筛选：时间窗口逐级放大兜底，避免0篇空推送
+        filtered_dict: List[Dict[str, Any]] = []
+        used_days_back = days_back
+        for window in sorted({days_back, 2, 3, 5, 7}):
+            if window < days_back:
+                continue
+            papers = crawler.fetch_papers(days_back=window)
+            papers_dict = [p.to_dict() for p in papers]
+            stats["fetched"] = len(papers_dict)
+            logger.info(f"爬取完成（窗口{window}天）: {len(papers_dict)} 篇")
+            if not papers_dict:
+                logger.warning(f"窗口{window}天未抓到论文，尝试扩大窗口")
+                continue
+
+            unique_papers, duplicate_papers = dedup.deduplicate_papers(papers_dict)
+            candidate = unique_papers if only_new else papers_dict
+            stats["unique"] = len(unique_papers)
+            stats["duplicates"] = len(duplicate_papers)
+            stats["candidates"] = len(candidate)
+
+            filtered_papers, _ = filter_obj.filter_and_rank(candidate, sort_by='relevance_score')
+            filtered_dict = [p.to_dict() for p in filtered_papers]
+            used_days_back = window
+            if filtered_dict:
+                break
+            logger.warning(f"窗口{window}天内无论文通过筛选，尝试扩大窗口")
+
+        # 兜底：各窗口均无新论文时，回顾最近7天论文（含已推送过的），避免空邮件
+        if not filtered_dict:
+            logger.warning("各时间窗口均无新论文，降级为回顾最近7天论文（含已推送）")
+            papers = crawler.fetch_papers(days_back=7)
+            papers_dict = [p.to_dict() for p in papers]
+            stats["fetched"] = len(papers_dict)
+            filtered_papers, _ = filter_obj.filter_and_rank(papers_dict, sort_by='relevance_score')
+            filtered_dict = [p.to_dict() for p in filtered_papers]
+            used_days_back = 7
+            stats["fallback_review"] = True
+
+        stats["used_days_back"] = used_days_back
         if top_n and len(filtered_dict) > top_n:
             filtered_dict = filtered_dict[:top_n]
         stats["filtered"] = len(filtered_dict)
-        logger.info(f"筛选完成: 选取{len(filtered_dict)} 篇用于AI总结")
+        logger.info(f"筛选完成: 选取{len(filtered_dict)} 篇用于AI总结（实际窗口{used_days_back}天）")
+
+        # 3.5) 抓取论文Overview配图（arXiv HTML版首图，失败自动跳过不影响主流程）
+        for p in filtered_dict:
+            img_url = crawler.fetch_overview_image(p.get('paper_id', ''))
+            if img_url:
+                p['overview_image'] = img_url
 
         # 4) AI 总结（异步）
         ideas_dict: List[Dict[str, Any]] = asyncio.run(self._extract_async(filtered_dict, batch_size=summary_batch_size))
@@ -193,9 +220,9 @@ class DailyJob:
         plain = formatter.generate_plain_text_email(final_papers)
         stats["email_stats"] = email_stats
 
-        # 10) 发送邮件（可选）
+        # 10) 发送邮件（可选；无论文时跳过，避免0篇空推送）
         sent_stats = None
-        if send_email:
+        if send_email and final_papers:
             email_config = self.cm.get_email_config()
             recipients = email_config.get('recipients', [])
             if recipients and email_config.get('sender_email'):
@@ -207,6 +234,9 @@ class DailyJob:
                 logger.info(f"邮件发送完成: {sent_stats}")
             else:
                 logger.warning("邮件配置不完整，跳过发送")
+        elif send_email:
+            logger.warning("没有符合条件的论文，本次不发送邮件")
+            stats["send_result"] = "skipped: no papers"
 
         # 11) 落盘
         if not html_out:

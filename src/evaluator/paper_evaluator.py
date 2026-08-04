@@ -88,6 +88,7 @@ class PaperEvaluator:
 2. 评分要客观严谨，避免过高或过低，大部分论文应在4-7分之间
 3. 理由要具体，避免空泛的评价
 4. 优点和不足要基于摘要内容，具体可操作
+5. JSON各字段的值必须使用纯文本，严禁包含任何Markdown标记符号（如 **、#、* 等）
 """
 
     def __init__(self, deepseek_config: Dict[str, Any]):

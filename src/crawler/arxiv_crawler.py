@@ -5,6 +5,9 @@ arxiv论文爬取模块
 
 import arxiv
 import logging
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
@@ -277,6 +280,54 @@ class ArxivCrawler:
             # 恢复原始关键词
             self.keywords = original_keywords
     
+    def fetch_overview_image(self, paper_id: str, timeout: int = 10) -> Optional[str]:
+        """
+        从 arXiv HTML 版页面抓取论文第一张配图（通常是方法 Overview/Figure 1）
+
+        Args:
+            paper_id: 论文ID（可带版本号，如 2508.01234v1）
+            timeout: 请求超时时间（秒）
+
+        Returns:
+            图片的绝对URL；抓取失败或论文无HTML版时返回 None
+        """
+        if not paper_id:
+            return None
+
+        base_id = paper_id.split('v')[0]
+        candidate_urls = [f"https://arxiv.org/html/{paper_id}"]
+        if base_id != paper_id:
+            candidate_urls.append(f"https://arxiv.org/html/{base_id}")
+
+        headers = {'User-Agent': self.config.get('user_agent', 'Mozilla/5.0')}
+
+        for page_url in candidate_urls:
+            try:
+                resp = requests.get(page_url, timeout=timeout, headers=headers)
+                if resp.status_code != 200:
+                    continue
+
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                for figure in soup.find_all('figure'):
+                    img = figure.find('img')
+                    if not img or not img.get('src'):
+                        continue
+                    # 跳过明显是图标/装饰的小图
+                    try:
+                        width = int(img.get('width', 0) or 0)
+                        if 0 < width < 200:
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+                    img_url = urljoin(page_url, img['src'])
+                    logger.debug(f"论文 {paper_id} Overview配图: {img_url}")
+                    return img_url
+            except Exception as e:
+                logger.debug(f"抓取论文 {paper_id} 配图失败({page_url}): {e}")
+
+        logger.debug(f"论文 {paper_id} 未找到可用的Overview配图")
+        return None
+
     def download_paper_info(self, paper_id: str) -> Optional[Dict[str, Any]]:
         """
         下载单篇论文的详细信息
