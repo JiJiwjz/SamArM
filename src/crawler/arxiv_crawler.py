@@ -8,7 +8,7 @@ import logging
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 import time
@@ -192,15 +192,21 @@ class ArxivCrawler:
                 sort_order=arxiv.SortOrder.Descending
             )
             
-            # 计算时间范围
-            now = datetime.utcnow()
+            # 计算时间范围（基于系统时钟的UTC时间，AI不参与日期计算）
+            now = datetime.now(timezone.utc)
             cutoff_date = now - timedelta(days=days_back)
+            logger.info(
+                f"检索时间窗口（系统时钟实时计算）: "
+                f"{cutoff_date.strftime('%Y-%m-%d %H:%M')} UTC 至 {now.strftime('%Y-%m-%d %H:%M')} UTC，"
+                f"即北京时间 {(cutoff_date + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')} 至 "
+                f"{(now + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')}"
+            )
             
             # 获取论文
             count = 0
             for entry in self.client.results(search):
-                # 检查论文发布日期
-                published_date = entry.published.replace(tzinfo=None)
+                # 检查论文发布日期（arxiv返回的时间自带UTC时区）
+                published_date = entry.published
                 
                 if published_date < cutoff_date:
                     logger.debug(f"论文 {entry.entry_id} 发布于{published_date}，已超出时间范围")
