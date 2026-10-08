@@ -242,8 +242,7 @@ class ArxivCrawler:
                 
                 logger.debug(f"获取论文: {paper.title[:50]}...")
                 
-                # 避免触发arxiv的速率限制
-                time.sleep(0.5)
+                # The client already spaces API page requests by 3 seconds.
             
             logger.info(f"成功获取 {count} 篇论文")
             return papers

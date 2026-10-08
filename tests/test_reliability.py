@@ -16,7 +16,7 @@ from src.extractor.deepseek_client import DeepSeekBatchProcessor
 from src.pipeline.daily_job import DailyJob
 from src.sender import EmailFormatter
 from src.sender.email_sender import EmailSender
-from src.crawler.arxiv_crawler import TimeoutAdapter
+from src.crawler.arxiv_crawler import TimeoutAdapter, ArxivCrawler
 
 
 def paper(pid='one', title='In-context learning for robotic manipulation', summary='A robot arm grasps objects.'):
@@ -98,6 +98,21 @@ class SmtpTests(unittest.TestCase):
         with patch('requests.adapters.HTTPAdapter.send') as parent:
             TimeoutAdapter(timeout=30).send(MagicMock(), timeout=None)
         self.assertEqual(parent.call_args.kwargs['timeout'], (10, 30))
+
+    def test_relevance_sort_does_not_stop_at_first_old_entry(self):
+        with patch('src.crawler.arxiv_crawler.arxiv.Client') as client:
+            old = MagicMock(published=datetime.now(timezone.utc) - timedelta(days=10))
+            recent = MagicMock(published=datetime.now(timezone.utc))
+            client.return_value.results.return_value = [old, recent]
+            crawler = ArxivCrawler({'keywords': ['imitation learning'], 'sort_by': 'relevance',
+                                    'robotics_only': True})
+            crawler.set_search_mode('keyword_only')
+            crawler._parse_paper = MagicMock(return_value=MagicMock(title='Robot imitation learning'))
+            result = crawler.fetch_papers(days_back=1)
+            search = client.return_value.results.call_args.args[0]
+        self.assertEqual(len(result), 1)
+        self.assertIn('submittedDate:[', search.query)
+        self.assertIn('cat:cs.RO', search.query)
 
 
 class Response:

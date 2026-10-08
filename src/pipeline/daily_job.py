@@ -219,7 +219,8 @@ class DailyJob:
                     break
             stats['filtered'] = len(filtered)
             for paper in filtered:
-                image = crawler.fetch_overview_image(paper.get('paper_id', ''))
+                image = crawler.fetch_overview_image(paper.get('paper_id', ''),
+                                                      timeout=config.get('overview_timeout', 3))
                 if image:
                     paper['overview_image'] = image
             ideas = asyncio.run(self._extract_async(filtered, summary_batch_size)) if filtered else []

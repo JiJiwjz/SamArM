@@ -37,6 +37,7 @@ arxiv:
   sort_order: "descending"
   search_mode: "keyword_only"
   robotics_only: true
+  overview_timeout: 3
 
 # ============ 深度学习API配置 ============
 deepseek:
