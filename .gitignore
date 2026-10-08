@@ -42,6 +42,8 @@ logs/
 data/processed_papers.json
 data/daily_delivery.json
 data/daily_delivery.tmp
+data/author_affiliations.json
+data/author_affiliations.tmp
 data/cache/
 
 # OS

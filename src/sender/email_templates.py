@@ -4,6 +4,7 @@
 """
 
 from datetime import datetime, timezone, timedelta
+from html import escape
 
 
 class EmailTemplate:
@@ -534,6 +535,13 @@ class EmailTemplate:
         if len(authors) > 3:
             authors_str += ' et al.'
 
+        institutions = paper.get('author_institutions') or []
+        affiliation_text = '；'.join(escape(name) for name in institutions) if institutions else '未获取'
+        affiliation_source = paper.get('affiliation_source')
+        if institutions and affiliation_source:
+            source_label = 'PDF 首页' if paper.get('affiliation_source_kind') == 'pdf' else '论文 HTML'
+            affiliation_text += f' <a href="{escape(affiliation_source, quote=True)}" target="_blank">[{source_label}]</a>'
+
         # 格式化关键词
         keywords_str = ' · '.join(matched_keywords[:5]) if matched_keywords else '—'
         if len(matched_keywords) > 5:
@@ -639,6 +647,7 @@ class EmailTemplate:
 
                 <div class="meta">{published} &nbsp;·&nbsp; arXiv:{paper_id} &nbsp;·&nbsp; REL {relevance_score:.0%}</div>
                 <div class="authors">{authors_str}</div>
+                <div class="authors">单位：{affiliation_text}</div>
 
                 {overview_html}
 

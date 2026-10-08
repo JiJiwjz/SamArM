@@ -39,6 +39,11 @@ arxiv:
   robotics_only: true
   overview_timeout: 3
 
+# ============ 作者单位提取 ============
+affiliations:
+  timeout: 8
+  max_pdf_mb: 15
+
 # ============ 深度学习API配置 ============
 deepseek:
   api_key: "${DEEPSEEK_API_KEY}"

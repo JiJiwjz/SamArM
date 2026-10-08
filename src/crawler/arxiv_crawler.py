@@ -12,6 +12,10 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 import time
+import io
+import re
+
+from src.extractor.affiliation_extractor import unique_institutions
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,7 @@ class ArxivCrawler:
         self.sort_by = config.get('sort_by', 'submittedDate')
         self.search_mode = 'or'  # 默认使用OR逻辑
         self.last_error = None
+        self._html_cache = {}
         
         # 初始化客户端
         self.client = arxiv.Client(
@@ -310,52 +315,112 @@ class ArxivCrawler:
             # 恢复原始关键词
             self.keywords = original_keywords
     
-    def fetch_overview_image(self, paper_id: str, timeout: int = 10) -> Optional[str]:
-        """
-        从 arXiv HTML 版页面抓取论文第一张配图（通常是方法 Overview/Figure 1）
-
-        Args:
-            paper_id: 论文ID（可带版本号，如 2508.01234v1）
-            timeout: 请求超时时间（秒）
-
-        Returns:
-            图片的绝对URL；抓取失败或论文无HTML版时返回 None
-        """
+    def _get_html(self, paper_id, timeout=3):
         if not paper_id:
-            return None
-
-        base_id = paper_id.split('v')[0]
-        candidate_urls = [f"https://arxiv.org/html/{paper_id}"]
-        if base_id != paper_id:
-            candidate_urls.append(f"https://arxiv.org/html/{base_id}")
-
-        headers = {'User-Agent': self.config.get('user_agent', 'Mozilla/5.0')}
-
-        for page_url in candidate_urls:
+            return None, ''
+        if paper_id in self._html_cache:
+            return self._html_cache[paper_id]
+        # Keep the exact version so later author changes cannot alter affiliations.
+        urls = [f'https://arxiv.org/html/{paper_id}']
+        result = (None, '')
+        for url in urls:
             try:
-                resp = requests.get(page_url, timeout=timeout, headers=headers)
-                if resp.status_code != 200:
+                response = requests.get(url, timeout=timeout)
+                if response.status_code == 200:
+                    result = (BeautifulSoup(response.text, 'html.parser'), url)
+                    break
+            except requests.RequestException as error:
+                logger.debug('HTML unavailable for %s: %s', paper_id, error)
+        self._html_cache[paper_id] = result
+        return result
+
+    @staticmethod
+    def parse_author_metadata(soup):
+        institutions = [node.get('content', '') for node in
+                        soup.select('meta[name="citation_author_institution"]')]
+        authors = soup.select_one('.ltx_authors')
+        if authors:
+            for node in authors.select('.ltx_role_affiliation, .ltx_affiliation'):
+                text = node.get_text(' ', strip=True)
+                text = re.sub(r'^Affiliation\s*:\s*', '', text, flags=re.I)
+                text = re.split(r'Project\s+page|https?://|\S+@\S+', text, flags=re.I)[0].strip()
+                if text:
+                    institutions.append(text)
+            institution_hint = re.compile(
+                r'University|Institute|College|School|Academy|Laborator|Research|Center|Centre|'
+                r'Google|DeepMind|Microsoft|NVIDIA|Physical Intelligence|Toyota|Samsung|'
+                r'Amazon|Apple|Meta|Tencent|Alibaba|ByteDance|Huawei|Bosch', re.I)
+            for marker in authors.find_all('sup'):
+                chunks = []
+                for sibling in marker.next_siblings:
+                    if getattr(sibling, 'name', None) in ('sup', 'br'):
+                        break
+                    chunks.append(sibling.get_text(' ', strip=True) if hasattr(sibling, 'get_text') else str(sibling))
+                text = ' '.join(chunks).strip()
+                text = re.split(r'Project\s+page|https?://|\S+@\S+', text, flags=re.I)[0].strip()
+                if text and len(text) <= 250 and institution_hint.search(text):
+                    institutions.append(text)
+        institutions = unique_institutions(v for v in institutions if v and '@' not in v)
+        author_text = authors.get_text(' ', strip=True) if authors else ''
+        author_text = re.sub(r'\S+@\S+', '', author_text)[:12000]
+        return institutions, author_text
+
+    @staticmethod
+    def extract_pdf_author_text(data):
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        if not reader.pages:
+            return ''
+        return (reader.pages[0].extract_text(extraction_mode='layout') or '')[:16000]
+
+    def fetch_author_metadata(self, paper_id, timeout=8, max_pdf_mb=15):
+        soup, html_url = self._get_html(paper_id, timeout=min(timeout, 3))
+        html_metadata = {}
+        if soup:
+            institutions, author_text = self.parse_author_metadata(soup)
+            if institutions or author_text:
+                html_metadata = {'institutions': institutions, 'author_text': author_text,
+                                 'source_url': html_url, 'source_kind': 'html'}
+                if institutions:
+                    return html_metadata
+        pdf_url = f'https://arxiv.org/pdf/{paper_id}'
+        try:
+            max_bytes = int(max_pdf_mb * 1024 * 1024)
+            start = time.monotonic()
+            with requests.get(pdf_url, timeout=(5, timeout), stream=True) as response:
+                response.raise_for_status()
+                if int(response.headers.get('Content-Length', 0)) > max_bytes:
+                    return html_metadata
+                data = bytearray()
+                for chunk in response.iter_content(chunk_size=65536):
+                    data.extend(chunk)
+                    if len(data) > max_bytes or time.monotonic() - start > timeout:
+                        return html_metadata
+            if not data.lstrip().startswith(b'%PDF-'):
+                return html_metadata
+            text = self.extract_pdf_author_text(data)
+            return {'institutions': [], 'author_text': text,
+                    'source_url': pdf_url, 'source_kind': 'pdf'}
+        except Exception as error:
+            logger.debug('PDF author metadata unavailable for %s: %s', paper_id, error)
+            return html_metadata
+
+    def fetch_overview_image(self, paper_id: str, timeout: int = 3) -> Optional[str]:
+        """Reuse the HTML page fetched for author metadata."""
+        soup, page_url = self._get_html(paper_id, timeout)
+        if not soup:
+            return None
+        for figure in soup.find_all('figure'):
+            image = figure.find('img')
+            if not image or not image.get('src'):
+                continue
+            try:
+                width = int(image.get('width', 0) or 0)
+                if 0 < width < 200:
                     continue
-
-                soup = BeautifulSoup(resp.text, 'html.parser')
-                for figure in soup.find_all('figure'):
-                    img = figure.find('img')
-                    if not img or not img.get('src'):
-                        continue
-                    # 跳过明显是图标/装饰的小图
-                    try:
-                        width = int(img.get('width', 0) or 0)
-                        if 0 < width < 200:
-                            continue
-                    except (ValueError, TypeError):
-                        pass
-                    img_url = urljoin(page_url, img['src'])
-                    logger.debug(f"论文 {paper_id} Overview配图: {img_url}")
-                    return img_url
-            except Exception as e:
-                logger.debug(f"抓取论文 {paper_id} 配图失败({page_url}): {e}")
-
-        logger.debug(f"论文 {paper_id} 未找到可用的Overview配图")
+            except (ValueError, TypeError):
+                pass
+            return urljoin(page_url, image['src'])
         return None
 
     def download_paper_info(self, paper_id: str) -> Optional[Dict[str, Any]]:

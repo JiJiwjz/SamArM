@@ -18,6 +18,7 @@ from src.extractor import IdeaExtractor, ExtractedIdea
 from src.evaluator import PaperEvaluator  # 🆕 导入质量评估器
 from src.sender import EmailFormatter, EmailSender
 from .delivery_state import DeliveryState
+from src.extractor.affiliation_extractor import AffiliationExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,14 @@ class DailyJob:
                 if filtered:
                     break
             stats['filtered'] = len(filtered)
+            if filtered:
+                extractor = AffiliationExtractor(self.cm.get_deepseek_config())
+                asyncio.run(extractor.enrich_papers(
+                    filtered, crawler, batch_size=summary_batch_size,
+                    timeout=self.cm.get('affiliations.timeout', 8),
+                    max_pdf_mb=self.cm.get('affiliations.max_pdf_mb', 15),
+                ))
+            stats['affiliations_found'] = sum(bool(p.get('author_institutions')) for p in filtered)
             for paper in filtered:
                 image = crawler.fetch_overview_image(paper.get('paper_id', ''),
                                                       timeout=config.get('overview_timeout', 3))

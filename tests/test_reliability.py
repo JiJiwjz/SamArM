@@ -198,6 +198,7 @@ class PipelineTests(unittest.TestCase):
         item.to_dict.return_value = paper()
         self.crawler.fetch_papers.return_value = [item]
         self.crawler.fetch_overview_image.return_value = None
+        self.crawler.fetch_author_metadata.return_value = {}
         self.sender_patch = patch('src.pipeline.daily_job.EmailSender')
         self.sender = self.sender_patch.start().return_value
         self.sender.send_email.return_value = (True, 'accepted')

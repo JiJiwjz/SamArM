@@ -122,6 +122,8 @@ class EmailFormatter:
 ────────────────────────────────────────────────────────────────────────────
 标题: {paper.get('title', '未知')}
 作者: {', '.join(paper.get('authors', [])[:3])}
+单位: {'；'.join(paper.get('author_institutions') or []) or '未获取'}
+单位来源: {paper.get('affiliation_source') if paper.get('author_institutions') else '—'}
 发布: {paper.get('published', '')[:10]}
 主题: {paper.get('topic_category', 'unknown')}
 相关性: {paper.get('relevance_score', 0):.1%}
