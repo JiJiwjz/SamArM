@@ -10,6 +10,8 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import aiohttp
 import json
+import math
+from ..extractor.api_request import request_completion, parse_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +23,14 @@ class PaperQuality:
     title: str
     
     # 五大维度评分 (1-10分)
-    innovation_score: float          # 创新性
-    practicality_score: float        # 实用性
-    technical_depth_score: float     # 技术深度
-    experimental_rigor_score: float  # 实验完整性
-    impact_potential_score: float    # 影响力潜力
+    innovation_score: Optional[float]
+    practicality_score: Optional[float]
+    technical_depth_score: Optional[float]
+    experimental_rigor_score: Optional[float]
+    impact_potential_score: Optional[float]
     
     # 综合评分
-    overall_score: float             # 综合得分 (1-10)
+    overall_score: Optional[float]
     quality_level: str               # 质量等级: 顶级/优秀/良好/一般/较弱
     
     # 详细分析
@@ -49,7 +51,7 @@ class PaperEvaluator:
     """论文质量评估器 - 使用AI进行多维度分析"""
     
     # 评估提示词模板
-    EVALUATION_PROMPT = """你是一位资深的学术论文评审专家。请从以下5个维度对这篇论文进行客观、严谨的评估：
+    EVALUATION_PROMPT = """你是一位机器人学习领域的学术论文评审专家。仅根据标题和摘要给出初步阅读优先级评估，不能把摘要未提供的实验细节当作事实。请从以下5个维度对这篇论文进行客观、严谨的评估：
 
 **论文信息：**
 标题：{title}
@@ -88,7 +90,8 @@ class PaperEvaluator:
 2. 评分要客观严谨，避免过高或过低，大部分论文应在4-7分之间
 3. 理由要具体，避免空泛的评价
 4. 优点和不足要基于摘要内容，具体可操作
-5. JSON各字段的值必须使用纯文本，严禁包含任何Markdown标记符号（如 **、#、* 等）
+5. 摘要无法判断的实验、真实机器人验证、泛化与安全性必须明确标注证据不足；不能推断会议录用水平。
+6. JSON各字段的值必须使用纯文本，严禁包含任何Markdown标记符号（如 **、#、* 等）
 """
 
     def __init__(self, deepseek_config: Dict[str, Any]):
@@ -100,13 +103,35 @@ class PaperEvaluator:
         """
         self.api_key = deepseek_config.get('api_key')
         self.api_url = deepseek_config.get('api_url', 'https://api.deepseek.com/v1')
-        self.model = deepseek_config.get('model', 'deepseek-chat')
+        self.model = deepseek_config.get('model', 'deepseek-flash')
         self.timeout = deepseek_config.get('timeout', 30)
+        self.max_attempts = int(deepseek_config.get('max_attempts', 3))
         
         if not self.api_key:
             raise ValueError("DeepSeek API密钥未配置")
         
         logger.info(f"论文质量评估器已初始化: {self.model}")
+
+    @staticmethod
+    def _validate_result(content):
+        result = parse_json_object(content)
+        fields = ['innovation_score', 'practicality_score', 'technical_depth_score',
+                  'experimental_rigor_score', 'impact_potential_score']
+        for field in fields:
+            value = result.get(field)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 1 <= value <= 10:
+                raise ValueError(f'invalid score field: {field}')
+        if not isinstance(result.get('reasoning'), str) or not result['reasoning'].strip():
+            raise ValueError('missing assessment reasoning')
+        for field in ['strengths', 'weaknesses']:
+            if not isinstance(result.get(field), list) or not all(isinstance(v, str) for v in result[field]):
+                raise ValueError(f'invalid list field: {field}')
+        weights = [0.3, 0.15, 0.2, 0.15, 0.2]
+        score = round(sum(result[field] * weight for field, weight in zip(fields, weights)), 2)
+        result['overall_score'] = score
+        result['quality_level'] = ('顶级' if score >= 9 else '优秀' if score >= 7 else
+                                   '良好' if score >= 5 else '一般' if score >= 3 else '较弱')
+        return result
     
     async def _call_deepseek_api(self, prompt: str, session: aiohttp.ClientSession) -> Dict[str, Any]:
         """
@@ -119,57 +144,20 @@ class PaperEvaluator:
         Returns:
             API响应的JSON结果
         """
-        headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json'
-        }
-        
         payload = {
             'model': self.model,
-            'messages': [
-                {'role': 'user', 'content': prompt}
-            ],
-            'temperature': 0.3,  # 降低温度以获得更一致的评分
-            # 推理模型的思考过程也占用 max_tokens，预留充足额度
-            'max_tokens': 3000
+            'messages': [{'role': 'user', 'content': prompt}],
+            'temperature': 0.3, 'max_tokens': 3000,
+            'thinking': {'type': 'disabled'},
+            'response_format': {'type': 'json_object'},
         }
-        
-        try:
-            async with session.post(
-                f"{self.api_url}/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=self.timeout)
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    content = data['choices'][0]['message']['content'].strip()
-                    
-                    # 提取JSON内容
-                    # 有些模型可能会在JSON前后添加文字，需要提取
-                    json_start = content.find('{')
-                    json_end = content.rfind('}') + 1
-                    
-                    if json_start >= 0 and json_end > json_start:
-                        json_str = content[json_start:json_end]
-                        result = json.loads(json_str)
-                        return result
-                    else:
-                        logger.error(f"无法从响应中提取JSON: {content}")
-                        return None
-                else:
-                    error_text = await response.text()
-                    logger.error(f"DeepSeek API错误 {response.status}: {error_text}")
-                    return None
-                    
-        except asyncio.TimeoutError:
-            logger.error(f"DeepSeek API超时")
-            return None
-        except Exception as e:
-            logger.error(f"DeepSeek API调用异常: {e}")
-            return None
-    
-    def _create_fallback_quality(self, paper: Dict[str, Any]) -> PaperQuality:
+        return await request_completion(
+            session, self.api_url, self.api_key, payload, timeout=self.timeout,
+            max_attempts=self.max_attempts, validate=self._validate_result,
+        )
+
+    @staticmethod
+    def _create_fallback_quality(paper: Dict[str, Any]) -> PaperQuality:
         """
         创建备选的质量评估（当AI不可用时）
         
@@ -179,24 +167,18 @@ class PaperEvaluator:
         Returns:
             备选的质量评估对象
         """
-        # 基于关键词匹配给出保守评分
-        relevance_score = paper.get('relevance_score', 0)
-        
-        # 简单映射：高相关性 -> 中等评分
-        base_score = 4.0 + relevance_score * 3.0  # 4-7分范围
-        
         return PaperQuality(
             paper_id=paper.get('paper_id', ''),
             title=paper.get('title', ''),
-            innovation_score=base_score,
-            practicality_score=base_score,
-            technical_depth_score=base_score,
-            experimental_rigor_score=base_score,
-            impact_potential_score=base_score,
-            overall_score=base_score,
-            quality_level='一般',
-            reasoning='AI评估暂时不可用，基于关键词匹配给出保守评分。',
-            strengths=['匹配研究关键词'],
+            innovation_score=None,
+            practicality_score=None,
+            technical_depth_score=None,
+            experimental_rigor_score=None,
+            impact_potential_score=None,
+            overall_score=None,
+            quality_level='待评估',
+            reasoning='评分请求未获得有效结果，本次保留论文与摘要，未生成质量分数。',
+            strengths=[],
             weaknesses=['需要详细阅读原文以准确评估'],
             evaluation_time=datetime.utcnow().isoformat(),
             evaluation_status='fallback'
@@ -226,7 +208,7 @@ class PaperEvaluator:
         # 构建提示词
         prompt = self.EVALUATION_PROMPT.format(
             title=title,
-            summary=summary[:1500]  # 限制摘要长度避免token过多
+            summary=summary
         )
         
         # 调用API

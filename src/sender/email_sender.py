@@ -89,6 +89,7 @@ class EmailSender:
         attempts = int(max_retries) if max_retries is not None else self.max_retries
         
         for attempt in range(1, attempts + 1):
+            accepted = False
             try:
                 # 创建消息
                 msg = self._create_message(to_email, subject, html_content, plain_content)
@@ -109,6 +110,9 @@ class EmailSender:
                     
                     server.login(self.sender_email, self.sender_password)
                     server.send_message(msg)
+                    # SMTP has accepted DATA. A subsequent QUIT failure must not
+                    # turn a successful submission into a duplicate retry.
+                    accepted = True
                 
                 logger.info(f"✅ 邮件发送成功: {to_email}")
                 return True, f"邮件已发送到 {to_email}"
@@ -119,6 +123,9 @@ class EmailSender:
                 return False, error_msg
             
             except smtplib.SMTPServerDisconnected as e:
+                if accepted:
+                    logger.warning('SMTP已接受邮件，关闭连接时断开；按投递成功记录')
+                    return True, 'SMTP已接受邮件'
                 # 某些服务商在DATA后断开，实际已投递。无法准确判断已投递与否，这里按失败处理。
                 error_msg = f"SMTP连接断开: {str(e)}"
                 if attempt < attempts:
@@ -129,6 +136,9 @@ class EmailSender:
                     return False, error_msg
             
             except smtplib.SMTPException as e:
+                if accepted:
+                    logger.warning('SMTP已接受邮件，关闭连接时返回异常；按投递成功记录')
+                    return True, 'SMTP已接受邮件'
                 error_msg = f"SMTP错误: {str(e)}"
                 if attempt < attempts:
                     logger.warning(f"⚠️ {error_msg}，{attempt}秒后重试...")

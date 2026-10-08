@@ -1,59 +1,104 @@
-name: Daily Image Restoration Report
+name: Daily Robotics Learning Report
 
 on:
-  # 每天北京时间 09:00（GitHub Actions 使用 UTC，即 01:00）自动运行
   schedule:
-    - cron: '0 1 * * *'
-  # 支持在 Actions 页面手动触发
+    # Prepare at 08:43 Beijing, then send no earlier than 09:00.
+    - cron: '43 0 * * *'
+    # Recovery attempts at 10:23 and 12:23; the daily ledger prevents repeats.
+    - cron: '23 2,4 * * *'
   workflow_dispatch:
+    inputs:
+      preview_only:
+        description: Generate reports without sending email
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: robotics-daily-report
+  cancel-in-progress: false
+
 jobs:
   daily-report:
-    name: Crawl & Send Daily Report
+    name: Prepare & Send Robotics Digest
     runs-on: ubuntu-latest
-
+    timeout-minutes: 40
+    env:
+      TZ: Asia/Shanghai
+      DINGTALK_ENABLED: "false"
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-
-      - name: Restore processed-papers cache
-        uses: actions/cache@v4
+          cache: pip
+      - name: Restore delivery and paper state
+        id: restore
+        uses: actions/cache/restore@v4
         with:
           path: data
-          key: processed-papers-${{ github.run_id }}
+          key: robotics-delivery-v1-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            processed-papers-
-
+            robotics-delivery-v1-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
+      - name: Run regression tests
+        run: python -m unittest discover -s tests -p 'test_*.py'
       - name: Run daily job
+        id: daily
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: deepseek-v4-flash
+          DEEPSEEK_MODEL: deepseek-flash
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS }}
-          DINGTALK_ENABLED: "false"
-        run: python main.py run-once --days-back 1 --top-n 10
-
-      - name: Upload HTML report
+          PREVIEW_ONLY: ${{ inputs.preview_only }}
+        run: |
+          args=()
+          if [[ "$PREVIEW_ONLY" == 'true' ]]; then
+            args+=(--no-email)
+          fi
+          python main.py run-once --days-back 1 --top-n 10 --once-per-day --send-at 09:00 "${args[@]}"
+      - name: Preserve state even after partial delivery
+        if: always() && steps.daily.outcome != 'skipped' && steps.restore.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: robotics-delivery-v1-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Upload reports and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: daily-report-${{ github.run_number }}
+          name: daily-report-${{ github.run_number }}-${{ github.run_attempt }}
           path: out/
           retention-days: 14
+
+  keep-schedule-active:
+    name: Prevent inactivity shutdown
+    needs: daily-report
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Record activity only after 30 days without commits
+        shell: bash
+        run: |
+          last_commit=$(git log -1 --format=%ct)
+          age=$(( $(date +%s) - last_commit ))
+          if (( age >= 30 * 24 * 60 * 60 )); then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit --allow-empty -m 'chore: keep daily report schedule active'
+            git push origin HEAD:${{ github.event.repository.default_branch }}
+          fi

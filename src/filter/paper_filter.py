@@ -8,6 +8,7 @@ import logging
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass, asdict
 import json
+from .research_topics import TOPIC_KEYWORDS, matches, scope_rejection
 
 logger = logging.getLogger(__name__)
 
@@ -40,58 +41,8 @@ class FilteredPaper:
 class PaperClassifier:
     """论文分类器 - 对论文进行主题分类"""
     
-    # 主题分类配置（仅 Image Restoration 及其子方向）
-    TOPIC_KEYWORDS = {
-        'image_restoration': {
-            'keywords': ['image restoration', 'restoration', 'all-in-one restoration',
-                        'adverse weather', 'image enhancement', 'image degradations',
-                        'degradation model', 'blind restoration'],
-            'weight': 1.0,
-            'description': '图像复原（通用）'
-        },
-        'image_denoising': {
-            'keywords': ['denoising', 'denoise', 'noise removal', 'noisy image',
-                        'gaussian noise', 'image noise'],
-            'weight': 1.0,
-            'description': '图像去噪'
-        },
-        'image_deblurring': {
-            'keywords': ['deblurring', 'deblur', 'blur removal', 'motion blur',
-                        'blind deblurring', 'defocus blur'],
-            'weight': 1.0,
-            'description': '图像去模糊'
-        },
-        'image_deraining': {
-            'keywords': ['deraining', 'derain', 'rain removal', 'rain streak',
-                        'raindrop', 'rainy image'],
-            'weight': 1.0,
-            'description': '图像去雨'
-        },
-        'image_dehazing': {
-            'keywords': ['dehazing', 'dehaze', 'haze removal', 'defogging',
-                        'defog', 'hazy image'],
-            'weight': 1.0,
-            'description': '图像去雾'
-        },
-        'super_resolution': {
-            'keywords': ['super-resolution', 'super resolution', 'single image super-resolution',
-                        'SISR', 'image upscaling', 'image upsampling'],
-            'weight': 1.0,
-            'description': '图像超分辨率'
-        },
-        'image_inpainting': {
-            'keywords': ['inpainting', 'inpaint', 'image completion', 'object removal'],
-            'weight': 1.0,
-            'description': '图像补全'
-        },
-        'low_light_enhancement': {
-            'keywords': ['low-light', 'low light', 'underexposed', 'low-light enhancement',
-                        'low-light image'],
-            'weight': 1.0,
-            'description': '低光图像增强'
-        }
-    }
-    
+    TOPIC_KEYWORDS = TOPIC_KEYWORDS
+
     def __init__(self):
         """初始化分类器"""
         logger.info(f"论文分类器已初始化，包含{len(self.TOPIC_KEYWORDS)}个主题")
@@ -153,8 +104,7 @@ class PaperClassifier:
         matched_count = 0
         for keyword in keywords:
             # 使用词边界匹配，避免部分匹配
-            pattern = rf'\b{re.escape(keyword.lower())}\b'
-            if re.search(pattern, text):
+            if matches(text, keyword):
                 matched_count += 1
         
         # 计算得分：(匹配数 / 总关键词数) * 权重
@@ -180,8 +130,7 @@ class PaperClassifier:
         matched = []
         for topic, config in self.TOPIC_KEYWORDS.items():
             for keyword in config.get('keywords', []):
-                pattern = rf'\b{re.escape(keyword.lower())}\b'
-                if re.search(pattern, full_text):
+                if matches(full_text, keyword):
                     matched.append(keyword)
         
         return list(set(matched))  # 去重
@@ -190,7 +139,7 @@ class PaperClassifier:
 class PaperFilter:
     """论文筛选器 - 综合去重、分类、相关性评分"""
     
-    def __init__(self, min_relevance_score: float = 0.0):
+    def __init__(self, min_relevance_score: float = 0.01, robotics_only: bool = True):
         """
         初始化筛选器
         
@@ -199,6 +148,7 @@ class PaperFilter:
         """
         self.classifier = PaperClassifier()
         self.min_relevance_score = min_relevance_score
+        self.robotics_only = robotics_only
         logger.info(f"论文筛选器已初始化，最低相关性分数: {min_relevance_score}")
     
     def filter_papers(self, papers: List[Dict]) -> Tuple[List[FilteredPaper], List[Dict]]:
@@ -215,11 +165,15 @@ class PaperFilter:
         rejected_papers = []
         
         for paper in papers:
+            reason = scope_rejection(paper, self.robotics_only)
+            if reason:
+                rejected_papers.append({'paper': paper, 'reason': reason})
+                continue
             # 进行分类和相关性评分
             main_topic, details, score = self.classifier.classify_paper(paper)
             
             # 检查是否满足最低相关性要求
-            if score < self.min_relevance_score:
+            if score <= 0 or score < self.min_relevance_score:
                 rejected_papers.append({
                     'paper': paper,
                     'reason': f'相关性分数过低: {score:.2f} < {self.min_relevance_score}'

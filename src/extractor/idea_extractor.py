@@ -46,13 +46,14 @@ class ExtractedIdea:
 class IdeaExtractor:
     """论文思想提取器"""
     
-    def __init__(self, deepseek_config: Dict[str, Any]):
+    def __init__(self, deepseek_config: Dict[str, Any], evaluate_quality: bool = True):
         """
         初始化思想提取器
         
         Args:
             deepseek_config: DeepSeek配置字典
         """
+        self.evaluate_quality = evaluate_quality
         api_key = deepseek_config.get('api_key')
         if not api_key:
             raise ValueError("DeepSeek API密钥未配置！")
@@ -60,7 +61,7 @@ class IdeaExtractor:
         self.client = DeepSeekClient(
             api_key=api_key,
             api_url=deepseek_config.get('api_url', 'https://api.deepseek.com/v1'),
-            model=deepseek_config.get('model', 'deepseek-chat'),
+            model=deepseek_config.get('model', 'deepseek-flash'),
             timeout=deepseek_config.get('timeout', 30)
         )
         
@@ -97,11 +98,9 @@ class IdeaExtractor:
                 self.system_prompt
             )
             
-            eval_task = self.client.evaluate_paper_quality(
-                paper.get('title', ''),
-                paper.get('summary', ''),
-                paper.get('authors', [])
-            )
+            eval_task = (self.client.evaluate_paper_quality(
+                paper.get('title', ''), paper.get('summary', ''), paper.get('authors', [])
+            ) if self.evaluate_quality else asyncio.sleep(0, result=None))
             
             ai_summary, eval_result = await asyncio.gather(summary_task, eval_task)
             
@@ -126,7 +125,8 @@ class IdeaExtractor:
                 quality_score = None
                 quality_level = None
                 quality_reasoning = None
-                logger.warning(f"⚠️  论文评估失败: {paper_id}")
+                if self.evaluate_quality:
+                    logger.warning(f"⚠️  论文评估失败: {paper_id}")
             
         except Exception as e:
             logger.error(f"❌ 提取失败 {paper_id}: {e}")
@@ -172,7 +172,7 @@ class IdeaExtractor:
         processor = DeepSeekBatchProcessor(self.client, batch_size=batch_size)
         
         summaries, evaluations = await processor.process_papers_with_evaluation(
-            papers, self.system_prompt
+            papers, self.system_prompt, evaluate=self.evaluate_quality
         )
         
         results = []

@@ -214,7 +214,7 @@ class Deduplicator:
         logger.debug(f"已标记论文: {paper['title'][:50]}...")
         return True
     
-    def deduplicate_papers(self, papers: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    def deduplicate_papers(self, papers: List[Dict], mark_processed: bool = True) -> Tuple[List[Dict], List[Dict]]:
         """
         对论文列表进行去重
         
@@ -226,16 +226,21 @@ class Deduplicator:
         """
         unique_papers = []
         duplicate_papers = []
+        seen = set()
         
         for paper in papers:
             is_dup, first_paper_id = self.is_duplicate(paper)
+            key = self._generate_duplicate_key(self.get_paper_fingerprint(paper))
+            is_dup = is_dup or key in seen
+            seen.add(key)
             
             if is_dup:
                 paper['duplicate_of'] = first_paper_id
                 duplicate_papers.append(paper)
             else:
                 unique_papers.append(paper)
-                self.mark_as_processed(paper)
+                if mark_processed:
+                    self.mark_as_processed(paper)
         
         logger.info(f"去重完成: 新增{len(unique_papers)}篇, 重复{len(duplicate_papers)}篇")
         return unique_papers, duplicate_papers

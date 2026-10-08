@@ -1,44 +1,60 @@
 # ============ arxiv爬取配置 ============
 arxiv:
-  # 搜索关键词列表（仅 Image Restoration 方向）
+  # All topics must be related to robotics; local filtering excludes humanoids.
   keywords:
-    - "image restoration"
-    - "image denoising"
-    - "image deblurring"
-    - "image deraining"
-    - "image dehazing"
-    - "image super-resolution"
-    - "image inpainting"
-    - "low-light image enhancement"
-
-  # 搜索分类
+    - "robot manipulation"
+    - "robotic manipulation"
+    - "robot arm"
+    - "robotic arm"
+    - "manipulator"
+    - "dexterous manipulation"
+    - "dexterous hand"
+    - "robotic hand"
+    - "in-hand manipulation"
+    - "bimanual manipulation"
+    - "grasping"
+    - "imitation learning"
+    - "behavior cloning"
+    - "behaviour cloning"
+    - "learning from demonstration"
+    - "diffusion policy"
+    - "vision-language-action"
+    - "vision language action"
+    - "VLA"
+    - "in-context learning"
+    - "in context learning"
+    - "reinforcement learning"
+    - "offline RL"
+    - "online RL"
+    - "policy optimization"
   categories:
-    - "cs.CV"        # Computer Vision
-    - "eess.IV"      # Image and Video Processing
-  
-  # 搜索参数
-  max_results: 50
-  sort_by: "submittedDate"  # submittedDate|relevance|lastUpdatedDate
+    - "cs.RO"
+    - "cs.LG"
+    - "cs.AI"
+    - "cs.CV"
+  max_results: 300
+  sort_by: "submittedDate"
   sort_order: "descending"
-  # 检索模式：or|and|keyword_only|category_only
-  # keyword_only = 仅用上述关键词检索，避免大分类结果挤占 max_results 上限导致漏检
   search_mode: "keyword_only"
+  robotics_only: true
 
 # ============ 深度学习API配置 ============
 deepseek:
   api_key: "${DEEPSEEK_API_KEY}"
   api_url: "https://api.deepseek.com/v1"
-  model: "deepseek-v4-flash"
+  model: "deepseek-flash"
   timeout: 60
+  max_attempts: 3
   
   # 提示词配置
   system_prompt: |
-    你是一个学术论文解读专家。请阅读以下论文的标题与摘要，用中文撰写一段论文解读。
+    你是一个机器人学习论文解读专家。请阅读以下论文的标题与摘要，用中文撰写一段论文解读。
     要求：
     1. 内容依次涵盖：研究背景、现有方法、现有方法的不足、研究动机（如何针对这些不足）、方法核心思路、实验结果（只描述规模最大的主实验，具体到在哪些数据集上评测以及关键指标结果）、总结。
     2. 直接写成连贯的一大段文字，不要出现“背景”“现有方法”等任何小标题，不要使用列表。
     3. 严禁使用任何 Markdown 标记符号（如 **、#、*、- 等），输出纯文本。
-    4. 长度控制在 300-500 字，语言流畅、学术化。
+    4. 只能使用标题和摘要提供的信息。未提供的数据集、数值、真实机器人实验不得编造；明确说明摘要未披露。优先解释机器人任务、机械臂或灵巧手平台、训练数据、泛化能力与真实部署证据。
+    5. 长度控制在 300-500 字，语言流畅、学术化。
   
   # 模型参数
   temperature: 0.7
@@ -60,7 +76,7 @@ email:
   recipients: "${RECIPIENT_EMAILS}"
   
   # 邮件设置
-  subject_prefix: "【Image Restoration日报】"
+  subject_prefix: "【机器人学习日报】"
   send_html: true
   include_links: true
 
@@ -126,7 +142,8 @@ crawler:
 # ============ 过滤配置 ============
 filter:
   # 论文最小相关性分数（0-1）
-  min_relevance_score: 0.5
+  min_relevance_score: 0.01
+  robotics_only: true
   
   # 是否去重
   deduplicate: true

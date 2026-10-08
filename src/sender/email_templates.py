@@ -1,25 +1,15 @@
 """
 邮件模板
-定义HTML邮件的样式和结构（Image Restoration 专题日报 · Light Mode）
+定义HTML邮件的样式和结构（机器人学习 专题日报 · Light Mode）
 """
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 
 class EmailTemplate:
     """邮件模板类"""
 
-    # 主题标签配置（Image Restoration 子方向）
-    TOPIC_LABELS = {
-        'image_restoration': '图像复原',
-        'image_denoising': '图像去噪',
-        'image_deblurring': '图像去模糊',
-        'image_deraining': '图像去雨',
-        'image_dehazing': '图像去雾',
-        'super_resolution': '超分辨率',
-        'image_inpainting': '图像补全',
-        'low_light_enhancement': '低光增强',
-    }
+    from ..filter.research_topics import TOPIC_LABELS
 
     @staticmethod
     def get_header(date_str: str, total_papers: int, topic_stats: dict = None) -> str:
@@ -48,7 +38,7 @@ class EmailTemplate:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Restoration 论文日报 · {date_str}</title>
+    <title>机器人学习 论文日报 · {date_str}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -481,8 +471,8 @@ class EmailTemplate:
 <body>
     <div class="container">
         <div class="masthead">
-            <div class="kicker"><span class="dot"></span>IMAGE RESTORATION DAILY</div>
-            <h1>Image Restoration<br><span class="accent">论文日报</span></h1>
+            <div class="kicker"><span class="dot"></span>ROBOTICS & LEARNING DAILY</div>
+            <h1>机器人学习<br><span class="accent">论文日报</span></h1>
             <div class="date-line">{date_str} · POWERED BY DEEPSEEK AI</div>
             <div class="stat-row">
                 <span class="stat-big"><span class="num">{total_papers:02d}</span><span class="unit">篇今日精选</span></span>
@@ -582,6 +572,8 @@ class EmailTemplate:
                 mark = "·"
 
             badge_html = f'<span class="badge {badge_class}">{mark} {quality_level} {quality_score:.1f}</span>'
+        else:
+            badge_html = '<span class="badge badge-normal">待评估</span>'
 
         # 生成五维度评分进度条
         dimensions_html = ""
@@ -594,7 +586,7 @@ class EmailTemplate:
                 + EmailTemplate._dimension_row("影响力潜力", impact_potential)
             )
             dimensions_html = f"""
-                <div class="label">评 分</div>
+                <div class="label">摘要初评 · 阅读优先级</div>
                 {rows}
             """
 
@@ -631,6 +623,8 @@ class EmailTemplate:
 
             pros_cons_html = pros_html + cons_html
 
+        summary_label = '原摘要备选' if paper.get('extraction_status') in ('fallback', 'error') else 'AI 解读'
+
         return f"""
             <div class="card">
                 <div class="card-head">
@@ -648,7 +642,7 @@ class EmailTemplate:
 
                 {overview_html}
 
-                <div class="label">摘 要</div>
+                <div class="label">{summary_label}</div>
                 <div class="summary">{ai_summary}</div>
 
                 {dimensions_html}
@@ -674,7 +668,7 @@ class EmailTemplate:
 
         <div class="colophon">
             <div class="glow"></div>
-            <p class="brand">SamArM · IMAGE RESTORATION DAILY</p>
+            <p class="brand">SamArM · ROBOTICS & LEARNING DAILY</p>
             <p>
                 本刊由 SamArM 自动生成 · DeepSeek AI 撰写摘要与评估<br>
                 <a href="https://github.com/JiJiwjz/SamArM">github.com/JiJiwjz/SamArM</a>
@@ -698,9 +692,12 @@ class EmailTemplate:
         Returns:
             完整的HTML邮件内容
         """
-        date_str = datetime.utcnow().strftime('%Y年%m月%d日')
+        date_str = datetime.now(timezone(timedelta(hours=8))).strftime('%Y年%m月%d日')
 
         html = cls.get_header(date_str, len(papers), topic_stats)
+
+        if not papers:
+            html += '<div class="card">本次检索暂无符合范围的新论文，自动任务已正常执行。</div>'
 
         for i, paper in enumerate(papers, 1):
             html += cls.get_paper_card(i, paper)

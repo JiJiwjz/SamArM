@@ -40,6 +40,8 @@ wheels/
 logs/
 *.log
 data/processed_papers.json
+data/daily_delivery.json
+data/daily_delivery.tmp
 data/cache/
 
 # OS

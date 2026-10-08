@@ -44,7 +44,9 @@ def cmd_run_once(args):
             summary_batch_size=args.batch_size,
             only_new=not args.include_all,
             send_email=not args.no_email,
-            html_out=args.html_out
+            html_out=args.html_out,
+            once_per_day=args.once_per_day,
+            send_at=args.send_at,
         )
         
         # 计算执行时间
@@ -98,7 +100,8 @@ def cmd_schedule(args):
                 summary_batch_size=args.batch_size,
                 only_new=not args.include_all,
                 send_email=not args.no_email,
-                html_out=None
+                html_out=None,
+                once_per_day=True,
             )
             
             execution_time = time.time() - start_time
@@ -130,6 +133,16 @@ def cmd_schedule(args):
         print("\n👋 已退出定时任务")
 
 
+def validate_time(value):
+    try:
+        hh, mm = map(int, value.split(':'))
+        if not 0 <= hh <= 23 or not 0 <= mm <= 59:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise argparse.ArgumentTypeError('时间必须为 HH:MM（00:00 至 23:59）')
+    return f'{hh:02d}:{mm:02d}'
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description="Arxiv-Mailbox 任务编排与调度")
     sub = parser.add_subparsers(dest="command")
@@ -142,11 +155,13 @@ def build_parser():
     p1.add_argument("--include-all", action="store_true", help="包含历史已处理论文（默认只推送新论文）")
     p1.add_argument("--no-email", action="store_true", help="不发送邮件，仅生成HTML")
     p1.add_argument("--html-out", type=str, default=None, help="HTML输出路径（默认 out/daily_YYYYMMDD.html）")
+    p1.add_argument("--once-per-day", action="store_true", help="当天仅投递一次，补跑只发送尚未成功的收件人")
+    p1.add_argument("--send-at", type=validate_time, default=None, help="日报提前准备，最早在此北京时间发送（HH:MM）")
     p1.set_defaults(func=cmd_run_once)
 
     # schedule
     p2 = sub.add_parser("schedule", help="定时运行")
-    p2.add_argument("--time", type=str, default="08:30", help="每天运行时间，HH:MM，默认08:30")
+    p2.add_argument("--time", type=validate_time, default="09:00", help="每天运行时间，HH:MM，默认09:00")
     p2.add_argument("--tz", type=str, default="Asia/Shanghai", help="时区，默认Asia/Shanghai")
     p2.add_argument("--days-back", type=int, default=3, help="向前回溯天数，默认3")
     p2.add_argument("--top-n", type=int, default=10, help="发送前取TopN篇，默认10")

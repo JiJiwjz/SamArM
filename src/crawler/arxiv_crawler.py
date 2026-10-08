@@ -16,6 +16,18 @@ import time
 logger = logging.getLogger(__name__)
 
 
+class TimeoutAdapter(requests.adapters.HTTPAdapter):
+    """arxiv 2.1.0 has no request timeout; bound network waits."""
+    def __init__(self, timeout=30):
+        super().__init__(max_retries=2)
+        self.timeout = timeout
+
+    def send(self, request, **kwargs):
+        if kwargs.get('timeout') is None:
+            kwargs['timeout'] = (10, self.timeout)
+        return super().send(request, **kwargs)
+
+
 @dataclass
 class Paper:
     """论文数据结构"""
@@ -51,6 +63,7 @@ class ArxivCrawler:
         self.max_results = config.get('max_results', 50)
         self.sort_by = config.get('sort_by', 'submittedDate')
         self.search_mode = 'or'  # 默认使用OR逻辑
+        self.last_error = None
         
         # 初始化客户端
         self.client = arxiv.Client(
@@ -58,6 +71,8 @@ class ArxivCrawler:
             delay_seconds=3,
             num_retries=3
         )
+        self.client._session.mount('https://', TimeoutAdapter(config.get('timeout', 30)))
+        self.client._session.mount('http://', TimeoutAdapter(config.get('timeout', 30)))
         
         logger.info(f"arxiv爬虫已初始化。关键词: {self.keywords}, 分类: {self.categories}")
     
@@ -170,6 +185,11 @@ class ArxivCrawler:
             论文列表
         """
         query = self.build_search_query()
+        if self.config.get('robotics_only', False):
+            context = ('cat:cs.RO OR all:robot OR all:robots OR all:robotic OR '
+                       'all:manipulation OR all:dexterous OR all:grasping OR all:LIBERO OR all:CALVIN')
+            query = f'({query}) AND ({context})'
+        self.last_error = None
         papers = []
         
         try:
@@ -184,7 +204,11 @@ class ArxivCrawler:
             }
             sort_by = sort_criterion_map.get(self.sort_by, arxiv.SortCriterion.SubmittedDate)
             
-            # 构建搜索请求
+            now = datetime.now(timezone.utc)
+            cutoff_date = now - timedelta(days=days_back)
+            query = (f'({query}) AND submittedDate:'
+                     f'[{cutoff_date.strftime("%Y%m%d%H%M")} TO {now.strftime("%Y%m%d%H%M")}]')
+            # Apply the date range on the server before max_results truncation.
             search = arxiv.Search(
                 query=query,
                 max_results=self.max_results,
@@ -193,8 +217,6 @@ class ArxivCrawler:
             )
             
             # 计算时间范围（基于系统时钟的UTC时间，AI不参与日期计算）
-            now = datetime.now(timezone.utc)
-            cutoff_date = now - timedelta(days=days_back)
             logger.info(
                 f"检索时间窗口（系统时钟实时计算）: "
                 f"{cutoff_date.strftime('%Y-%m-%d %H:%M')} UTC 至 {now.strftime('%Y-%m-%d %H:%M')} UTC，"
@@ -210,7 +232,9 @@ class ArxivCrawler:
                 
                 if published_date < cutoff_date:
                     logger.debug(f"论文 {entry.entry_id} 发布于{published_date}，已超出时间范围")
-                    break
+                    if self.sort_by == 'submittedDate':
+                        break
+                    continue
                 
                 paper = self._parse_paper(entry)
                 papers.append(paper)
@@ -225,6 +249,7 @@ class ArxivCrawler:
             return papers
         
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"从arxiv获取论文时出错: {e}", exc_info=True)
             return []
     

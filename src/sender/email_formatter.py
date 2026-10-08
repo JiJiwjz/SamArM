@@ -5,7 +5,7 @@
 
 import logging
 from typing import List, Dict, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from .email_templates import EmailTemplate
 
@@ -30,7 +30,7 @@ class EmailFormatter:
         Returns:
             排序后的论文列表
         """
-        return sorted(papers, key=lambda p: p.get('relevance_score', 0), reverse=True)
+        return sorted(papers, key=lambda p: (p.get('quality_score') or 0) * 0.7 + (p.get('relevance_score') or 0) * 3, reverse=True)
     
     @staticmethod
     def get_topic_statistics(papers: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -95,8 +95,8 @@ class EmailFormatter:
         
         text = f"""
 {'='*80}
-                    🖼️ Image Restoration 论文日报
-                    {datetime.utcnow().strftime('%Y年%m月%d日')}
+                    🤖 机器人学习 论文日报
+                    {datetime.now(timezone(timedelta(hours=8))).strftime('%Y年%m月%d日')}
 {'='*80}
 
 📊 统计信息
@@ -106,6 +106,9 @@ class EmailFormatter:
 
 """
         
+        if not sorted_papers:
+            text += '本次检索暂无符合范围的新论文，自动任务已正常执行。\n\n'
+
         # 主题统计
         topic_stats = self.get_topic_statistics(sorted_papers)
         text += "主题分布: " + ", ".join([f"{topic}: {count}篇" for topic, count in sorted(topic_stats.items(), key=lambda x: x[1], reverse=True)]) + "\n\n"
@@ -126,13 +129,16 @@ class EmailFormatter:
 🤖 AI总结:
 {paper.get('ai_summary', '无')}
 
+摘要初评: {str(paper.get('quality_score')) + '/10' if paper.get('quality_score') is not None else '待评估'}
+{paper.get('quality_reasoning') or ''}
+
 🔗 链接: {paper.get('arxiv_url', '#')}
 
 """
         
         text += f"""
 {'='*80}
-此邮件由 SamArM 自动生成（Image Restoration 专题）
+此邮件由 SamArM 自动生成（机器人学习 专题）
 © 2025 SamArM. Automated Paper Digest
 {'='*80}
 """

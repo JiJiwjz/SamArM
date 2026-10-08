@@ -9,6 +9,7 @@ import logging
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
 import json
+from .api_request import request_completion
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ class DeepSeekClient:
     """DeepSeek API 异步客户端"""
     
     def __init__(self, api_key: str, api_url: str = "https://api.deepseek.com/v1", 
-                 model: str = "deepseek-chat", timeout: int = 30):
+                 model: str = "deepseek-flash", timeout: int = 60):
         """
         初始化DeepSeek客户端
         
@@ -47,49 +48,15 @@ class DeepSeekClient:
         Returns:
             API响应文本或None
         """
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
         payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "top_p": 0.9
+            "model": self.model, "messages": messages,
+            "temperature": temperature, "max_tokens": max_tokens,
+            "thinking": {"type": "disabled"},
         }
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.api_url}/chat/completions",
-                    json=payload,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=self.timeout)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
-                        return content
-                    elif response.status == 429:
-                        logger.warning("API限流：429错误")
-                        return None
-                    elif response.status == 401:
-                        logger.error("API认证失败：401错误，请检查API密钥")
-                        return None
-                    else:
-                        error_text = await response.text()
-                        logger.error(f"API返回错误 {response.status}: {error_text}")
-                        return None
-        
-        except asyncio.TimeoutError:
-            logger.warning("API请求超时")
-            return None
-        except Exception as e:
-            logger.error(f"API调用出错: {e}")
-            return None
-    
+        async with aiohttp.ClientSession() as session:
+            return await request_completion(session, self.api_url, self.api_key,
+                                            payload, timeout=self.timeout)
+
     async def summarize_paper(self, title: str, summary: str, 
                              system_prompt: Optional[str] = None) -> Optional[str]:
         """
@@ -214,8 +181,9 @@ class DeepSeekBatchProcessor:
         self.batch_size = batch_size
         self.delay = delay
     
-    async def process_papers_with_evaluation(self, papers: list, 
-                                            system_prompt: Optional[str] = None) -> Tuple[list, list]:
+    async def process_papers_with_evaluation(self, papers: list,
+                                            system_prompt: Optional[str] = None,
+                                            evaluate: bool = True) -> Tuple[list, list]:
         """
         🆕 批量处理论文（包含总结和评估）
         
@@ -247,16 +215,14 @@ class DeepSeekBatchProcessor:
                     system_prompt
                 )
                 # 评估任务
-                eval_task = self.client.evaluate_paper_quality(
-                    paper.get('title', ''),
-                    paper.get('summary', ''),
-                    paper.get('authors', [])
-                )
+                eval_task = (self.client.evaluate_paper_quality(
+                    paper.get('title', ''), paper.get('summary', ''), paper.get('authors', [])
+                ) if evaluate else asyncio.sleep(0, result=None))
                 tasks.append((summary_task, eval_task, paper))
             
             # 等待所有任务完成
             batch_results = await asyncio.gather(
-                *[asyncio.gather(s, e) for s, e, p in tasks],
+                *[asyncio.gather(s, e, return_exceptions=True) for s, e, p in tasks],
                 return_exceptions=True
             )
             
